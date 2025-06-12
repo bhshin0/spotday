@@ -54,7 +54,7 @@
 
     <Button
         android:id="@+id/startButton"
-        android:text="Build My Day"
+        android:text="Apply"
         android:layout_marginTop="24dp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"/>

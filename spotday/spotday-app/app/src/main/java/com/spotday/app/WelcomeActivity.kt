@@ -1,13 +1,19 @@
 package com.spotday.app
 
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.spotday.app.ui.theme.SpotDayTheme
 
 class WelcomeActivity : ComponentActivity() {
@@ -28,6 +34,7 @@ class WelcomeActivity : ComponentActivity() {
 
 @Composable
 fun WelcomeScreen() {
+    val context = LocalContext.current
     var time by remember { mutableStateOf(4) }
     var budget by remember { mutableStateOf(50) }
     var familiarity by remember { mutableStateOf("Tourist") }
@@ -116,10 +123,23 @@ fun WelcomeScreen() {
         Spacer(modifier = Modifier.height(24.dp))
         
         Button(
-            onClick = { /* TODO: Navigate to next screen */ },
+            onClick = {
+                try {
+                    val intent = Intent(context, ActivityPreferencesActivity::class.java).apply {
+                        putExtra("totalDurationHours", 4) // Pass the 4-hour duration
+                        // We can also pass other parameters if needed
+                        // putExtra("budget", budget)
+                        // putExtra("familiarity", familiarity)
+                    }
+                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity")
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e("WelcomeActivity", "Error starting activity", e)
+                }
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Build My Day")
+            Text("Apply")
         }
     }
 } 

@@ -1,22 +1,14 @@
+# Local configuration files
+local.properties
+spotday-app/local.properties
+spotday-app/spotday-app/local.properties
+
+# Android Studio files
 *.iml
 .gradle
-/local.properties
 /.idea
 .DS_Store
 /build
 /captures
 .externalNativeBuild
 .cxx
-local.properties
-*.apk
-*.aab
-*.ap_
-*.dex
-*.class
-bin/
-gen/
-out/
-.navigation/
-gradle-app.setting
-!gradle-wrapper.jar
-.gradletasknamecache 

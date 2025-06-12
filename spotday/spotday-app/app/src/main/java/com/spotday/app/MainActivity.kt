@@ -60,4 +60,8 @@ fun DefaultPreview() {
     SpotDayTheme {
         Greeting("SpotDay")
     }
-} 
+}
+
+// In your activity or viewmodel
+val mapsApiKey = BuildConfig.MAPS_API_KEY
+val placesApiKey = BuildConfig.PLACES_API_KEY 
