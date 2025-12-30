@@ -14,4 +14,7 @@ local.properties
 
 # Memory dumps and logs
 *.hprof
+**/*.hprof
 *.log
+**/*.log
+

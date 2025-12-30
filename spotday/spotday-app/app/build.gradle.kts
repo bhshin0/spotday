@@ -1,6 +1,26 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// Helper function to get API key from local.properties (gitignored) or gradle.properties
+fun getApiKey(propertyName: String): String {
+    // First try to read from local.properties (which is gitignored)
+    val localProperties = Properties()
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { stream ->
+            localProperties.load(stream)
+        }
+        val value = localProperties.getProperty(propertyName)
+        if (!value.isNullOrEmpty()) {
+            return value
+        }
+    }
+    // Fall back to gradle.properties or command-line properties
+    return project.findProperty(propertyName) as String? ?: ""
 }
 
 android {
@@ -19,9 +39,12 @@ android {
             useSupportLibrary = true
         }
 
-        // Add BuildConfig fields for API keys
-        buildConfigField("String", "MAPS_API_KEY", "\"${project.findProperty("MAPS_API_KEY") ?: ""}\"")
-        buildConfigField("String", "PLACES_API_KEY", "\"${project.findProperty("PLACES_API_KEY") ?: ""}\"")
+        // Add BuildConfig fields for API keys (reads from local.properties first, then gradle.properties)
+        buildConfigField("String", "MAPS_API_KEY", "\"${getApiKey("MAPS_API_KEY")}\"")
+        buildConfigField("String", "PLACES_API_KEY", "\"${getApiKey("PLACES_API_KEY")}\"")
+
+        // Add manifest placeholders for API keys
+        manifestPlaceholders["MAPS_API_KEY"] = getApiKey("MAPS_API_KEY")
     }
 
     buildTypes {
@@ -103,6 +126,10 @@ dependencies {
     // Google Maps
     implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation("com.google.android.gms:play-services-location:21.1.0")
+    
+    // Maps Compose
+    implementation("com.google.maps.android:maps-compose:4.3.0")
+    implementation("com.google.maps.android:maps-compose-utils:4.3.0")
     
     // Places API
     implementation("com.google.android.libraries.places:places:3.3.0")

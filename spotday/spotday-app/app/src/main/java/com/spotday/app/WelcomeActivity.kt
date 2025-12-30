@@ -8,12 +8,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.spotday.app.ui.theme.SpotDayTheme
 
 class WelcomeActivity : ComponentActivity() {
@@ -36,15 +33,13 @@ class WelcomeActivity : ComponentActivity() {
 fun WelcomeScreen() {
     val context = LocalContext.current
     var time by remember { mutableStateOf(4) }
-    var budget by remember { mutableStateOf(50) }
-    var familiarity by remember { mutableStateOf("Tourist") }
-    var foodChecked by remember { mutableStateOf(false) }
-    var activitiesChecked by remember { mutableStateOf(false) }
+    var budget by remember { mutableStateOf(100) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp)
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center
     ) {
         Text(
             text = "Welcome to SpotDay!",
@@ -58,88 +53,69 @@ fun WelcomeScreen() {
             style = MaterialTheme.typography.bodyLarge
         )
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(48.dp))
         
-        Text("How much time do you have?")
+        Text(
+            text = "How much time do you have?",
+            style = MaterialTheme.typography.titleMedium
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
         Slider(
             value = time.toFloat(),
             onValueChange = { time = it.toInt() },
-            valueRange = 1f..8f,
-            steps = 7
+            valueRange = 2f..8f,
+            steps = 6
         )
-        Text("$time hours")
+        
+        Text(
+            text = "$time hours",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Text(
+            text = "What's your budget?",
+            style = MaterialTheme.typography.titleMedium
+        )
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        Text("What's your total budget?")
         Slider(
             value = budget.toFloat(),
             onValueChange = { budget = it.toInt() },
-            valueRange = 0f..200f,
-            steps = 40
+            valueRange = 50f..250f,
+            steps = 19
         )
-        Text("$$budget")
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "$$budget",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(top = 8.dp)
+        )
         
-        Text("Your familiarity:")
-        Row {
-            RadioButton(
-                selected = familiarity == "Tourist",
-                onClick = { familiarity = "Tourist" }
-            )
-            Text("Tourist")
-            Spacer(modifier = Modifier.width(8.dp))
-            RadioButton(
-                selected = familiarity == "New",
-                onClick = { familiarity = "New" }
-            )
-            Text("New")
-            Spacer(modifier = Modifier.width(8.dp))
-            RadioButton(
-                selected = familiarity == "Local",
-                onClick = { familiarity = "Local" }
-            )
-            Text("Local")
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Text("Must-haves:")
-        Row {
-            Checkbox(
-                checked = foodChecked,
-                onCheckedChange = { foodChecked = it }
-            )
-            Text("Food")
-            Spacer(modifier = Modifier.width(16.dp))
-            Checkbox(
-                checked = activitiesChecked,
-                onCheckedChange = { activitiesChecked = it }
-            )
-            Text("Activities")
-        }
-        
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(48.dp))
         
         Button(
             onClick = {
                 try {
                     val intent = Intent(context, ActivityPreferencesActivity::class.java).apply {
-                        putExtra("totalDurationHours", 4) // Pass the 4-hour duration
-                        // We can also pass other parameters if needed
-                        // putExtra("budget", budget)
-                        // putExtra("familiarity", familiarity)
+                        putExtra("totalHours", time)
+                        putExtra("totalBudget", budget)
                     }
-                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity")
+                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity with $time hours and $$budget budget")
                     context.startActivity(intent)
+                    (context as? ComponentActivity)?.finish()
                 } catch (e: Exception) {
                     Log.e("WelcomeActivity", "Error starting activity", e)
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Apply")
+            Text("Continue")
         }
     }
 } 

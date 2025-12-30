@@ -16,13 +16,17 @@ import com.spotday.app.ui.theme.SpotDayTheme
 class ActivityPreferencesActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        val totalHours = intent.getIntExtra("totalHours", 4)
+        val totalBudget = intent.getIntExtra("totalBudget", 100)
+        
         setContent {
             SpotDayTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ActivityPreferencesScreen()
+                    ActivityPreferencesScreen(totalHours = totalHours, totalBudget = totalBudget)
                 }
             }
         }
@@ -30,164 +34,141 @@ class ActivityPreferencesActivity : ComponentActivity() {
 }
 
 @Composable
-fun ActivityPreferencesScreen() {
+fun ActivityPreferencesScreen(totalHours: Int, totalBudget: Int) {
+    val context = LocalContext.current
     var museumsChecked by remember { mutableStateOf(false) }
-    var natureChecked by remember { mutableStateOf(false) }
-    var entertainmentChecked by remember { mutableStateOf(false) }
-    var comedyChecked by remember { mutableStateOf(false) }
-    var musicChecked by remember { mutableStateOf(false) }
-    var sportsChecked by remember { mutableStateOf(false) }
+    var parksChecked by remember { mutableStateOf(false) }
+    var waterfrontChecked by remember { mutableStateOf(false) }
+    var historicSitesChecked by remember { mutableStateOf(false) }
     var shoppingChecked by remember { mutableStateOf(false) }
-    var foodDrinkChecked by remember { mutableStateOf(false) }
-    var historyChecked by remember { mutableStateOf(false) }
-    var nightlifeChecked by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(24.dp)
     ) {
         Text(
-            text = "Select Your Interests",
+            text = "Select Activities",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Activity checkboxes
-        Row {
+        Text(
+            text = "What would you like to do?",
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+
+        // Museums
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
             Checkbox(
                 checked = museumsChecked,
                 onCheckedChange = { museumsChecked = it }
             )
-            Text("Museums")
-        }
-        Row {
-            Checkbox(
-                checked = natureChecked,
-                onCheckedChange = { natureChecked = it }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Museums",
+                style = MaterialTheme.typography.bodyLarge
             )
-            Text("Nature")
         }
-        Row {
+
+        // Parks
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
             Checkbox(
-                checked = entertainmentChecked,
-                onCheckedChange = { entertainmentChecked = it }
+                checked = parksChecked,
+                onCheckedChange = { parksChecked = it }
             )
-            Text("Entertainment")
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Parks",
+                style = MaterialTheme.typography.bodyLarge
+            )
         }
-        Row {
+
+        // Waterfront
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
             Checkbox(
-                checked = comedyChecked,
-                onCheckedChange = { comedyChecked = it }
+                checked = waterfrontChecked,
+                onCheckedChange = { waterfrontChecked = it }
             )
-            Text("Comedy")
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Waterfront",
+                style = MaterialTheme.typography.bodyLarge
+            )
         }
-        Row {
+
+        // Historic Sites
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
             Checkbox(
-                checked = musicChecked,
-                onCheckedChange = { musicChecked = it }
+                checked = historicSitesChecked,
+                onCheckedChange = { historicSitesChecked = it }
             )
-            Text("Music")
-        }
-        Row {
-            Checkbox(
-                checked = sportsChecked,
-                onCheckedChange = { sportsChecked = it }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Historic Sites",
+                style = MaterialTheme.typography.bodyLarge
             )
-            Text("Sports")
         }
-        Row {
+
+        // Shopping
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
             Checkbox(
                 checked = shoppingChecked,
                 onCheckedChange = { shoppingChecked = it }
             )
-            Text("Shopping")
-        }
-        Row {
-            Checkbox(
-                checked = foodDrinkChecked,
-                onCheckedChange = { foodDrinkChecked = it }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Shopping",
+                style = MaterialTheme.typography.bodyLarge
             )
-            Text("Food & Drink")
-        }
-        Row {
-            Checkbox(
-                checked = historyChecked,
-                onCheckedChange = { historyChecked = it }
-            )
-            Text("History")
-        }
-        Row {
-            Checkbox(
-                checked = nightlifeChecked,
-                onCheckedChange = { nightlifeChecked = it }
-            )
-            Text("Nightlife")
         }
 
         Spacer(modifier = Modifier.weight(1f))
 
-        NavigationButton(
-            museumsChecked = museumsChecked,
-            natureChecked = natureChecked,
-            entertainmentChecked = entertainmentChecked,
-            comedyChecked = comedyChecked,
-            musicChecked = musicChecked,
-            sportsChecked = sportsChecked,
-            shoppingChecked = shoppingChecked,
-            foodDrinkChecked = foodDrinkChecked,
-            historyChecked = historyChecked,
-            nightlifeChecked = nightlifeChecked
-        )
+        Button(
+            onClick = {
+                try {
+                    val selectedActivities = mutableListOf<String>()
+                    if (museumsChecked) selectedActivities.add("museums")
+                    if (parksChecked) selectedActivities.add("parks")
+                    if (waterfrontChecked) selectedActivities.add("waterfront")
+                    if (historicSitesChecked) selectedActivities.add("historic_sites")
+                    if (shoppingChecked) selectedActivities.add("shopping")
+
+                    if (selectedActivities.isNotEmpty()) {
+                        Log.d("ActivityPreferences", "Starting RestaurantSelectionActivity")
+                        Log.d("ActivityPreferences", "Total hours: $totalHours, Budget: $$totalBudget")
+                        Log.d("ActivityPreferences", "Activities: $selectedActivities")
+                        
+                        val intent = Intent(context, RestaurantSelectionActivity::class.java).apply {
+                            putExtra("totalHours", totalHours)
+                            putExtra("totalBudget", totalBudget)
+                            putExtra("activityTypes", selectedActivities.toTypedArray())
+                        }
+                        context.startActivity(intent)
+                        (context as? ComponentActivity)?.finish()
+                    } else {
+                        Log.d("ActivityPreferences", "No activities selected")
+                    }
+                } catch (e: Exception) {
+                    Log.e("ActivityPreferences", "Error starting activity", e)
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = museumsChecked || parksChecked || waterfrontChecked || historicSitesChecked || shoppingChecked
+        ) {
+            Text("Continue")
+        }
     }
 }
-
-@Composable
-private fun NavigationButton(
-    museumsChecked: Boolean,
-    natureChecked: Boolean,
-    entertainmentChecked: Boolean,
-    comedyChecked: Boolean,
-    musicChecked: Boolean,
-    sportsChecked: Boolean,
-    shoppingChecked: Boolean,
-    foodDrinkChecked: Boolean,
-    historyChecked: Boolean,
-    nightlifeChecked: Boolean
-) {
-    val context = LocalContext.current
-    
-    Button(
-        onClick = {
-            try {
-                val selectedPreferences = mutableListOf<String>()
-                if (museumsChecked) selectedPreferences.add("museums")
-                if (natureChecked) selectedPreferences.add("nature")
-                if (entertainmentChecked) selectedPreferences.add("entertainment")
-                if (comedyChecked) selectedPreferences.add("comedy")
-                if (musicChecked) selectedPreferences.add("music")
-                if (sportsChecked) selectedPreferences.add("sports")
-                if (shoppingChecked) selectedPreferences.add("shopping")
-                if (foodDrinkChecked) selectedPreferences.add("food_drink")
-                if (historyChecked) selectedPreferences.add("history")
-                if (nightlifeChecked) selectedPreferences.add("nightlife")
-
-                if (selectedPreferences.isNotEmpty()) {
-                    Log.d("ActivityPreferences", "Starting ItineraryDisplayActivity with ${selectedPreferences.size} preferences")
-                    val intent = Intent(context, ItineraryDisplayActivity::class.java).apply {
-                        putExtra("totalDurationHours", 4)
-                        putExtra("selectedPreferences", selectedPreferences.toTypedArray())
-                    }
-                    context.startActivity(intent)
-                } else {
-                    Log.d("ActivityPreferences", "No preferences selected")
-                }
-            } catch (e: Exception) {
-                Log.e("ActivityPreferences", "Error starting activity", e)
-            }
-        },
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text("Continue")
-    }
-} 
