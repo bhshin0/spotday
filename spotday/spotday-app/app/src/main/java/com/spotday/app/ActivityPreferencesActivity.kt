@@ -20,6 +20,7 @@ class ActivityPreferencesActivity : ComponentActivity() {
         val startHour = intent.getIntExtra("startHour", 9)
         val endHour = intent.getIntExtra("endHour", 17)
         val totalBudget = intent.getIntExtra("totalBudget", 100)
+        val isHungryNow = intent.getBooleanExtra("isHungryNow", false)
         
         setContent {
             SpotDayTheme {
@@ -27,7 +28,12 @@ class ActivityPreferencesActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ActivityPreferencesScreen(startHour = startHour, endHour = endHour, totalBudget = totalBudget)
+                    ActivityPreferencesScreen(
+                        startHour = startHour, 
+                        endHour = endHour, 
+                        totalBudget = totalBudget,
+                        isHungryNow = isHungryNow
+                    )
                 }
             }
         }
@@ -35,7 +41,7 @@ class ActivityPreferencesActivity : ComponentActivity() {
 }
 
 @Composable
-fun ActivityPreferencesScreen(startHour: Int, endHour: Int, totalBudget: Int) {
+fun ActivityPreferencesScreen(startHour: Int, endHour: Int, totalBudget: Int, isHungryNow: Boolean) {
     val context = LocalContext.current
     var museumsChecked by remember { mutableStateOf(false) }
     var parksChecked by remember { mutableStateOf(false) }
@@ -149,13 +155,14 @@ fun ActivityPreferencesScreen(startHour: Int, endHour: Int, totalBudget: Int) {
 
                     if (selectedActivities.isNotEmpty()) {
                         Log.d("ActivityPreferences", "Starting RestaurantSelectionActivity")
-                        Log.d("ActivityPreferences", "Time range: $startHour to $endHour, Budget: $$totalBudget")
+                        Log.d("ActivityPreferences", "Time range: $startHour to $endHour, Budget: $$totalBudget, HungryNow: $isHungryNow")
                         Log.d("ActivityPreferences", "Activities: $selectedActivities")
                         
                         val intent = Intent(context, RestaurantSelectionActivity::class.java).apply {
                             putExtra("startHour", startHour)
                             putExtra("endHour", endHour)
                             putExtra("totalBudget", totalBudget)
+                            putExtra("isHungryNow", isHungryNow)
                             putExtra("activityTypes", selectedActivities.toTypedArray())
                         }
                         context.startActivity(intent)

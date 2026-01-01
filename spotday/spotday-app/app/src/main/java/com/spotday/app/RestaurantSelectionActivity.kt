@@ -20,6 +20,7 @@ class RestaurantSelectionActivity : ComponentActivity() {
         val startHour = intent.getIntExtra("startHour", 9)
         val endHour = intent.getIntExtra("endHour", 17)
         val totalBudget = intent.getIntExtra("totalBudget", 100)
+        val isHungryNow = intent.getBooleanExtra("isHungryNow", false)
         val activityTypes = intent.getStringArrayExtra("activityTypes") ?: arrayOf()
         
         setContent {
@@ -32,6 +33,7 @@ class RestaurantSelectionActivity : ComponentActivity() {
                         startHour = startHour,
                         endHour = endHour,
                         totalBudget = totalBudget,
+                        isHungryNow = isHungryNow,
                         activityTypes = activityTypes.toList()
                     )
                 }
@@ -45,6 +47,7 @@ fun RestaurantSelectionScreen(
     startHour: Int,
     endHour: Int,
     totalBudget: Int,
+    isHungryNow: Boolean,
     activityTypes: List<String>
 ) {
     val context = LocalContext.current
@@ -177,7 +180,7 @@ fun RestaurantSelectionScreen(
 
                     if (selectedFoodTypes.isNotEmpty()) {
                         Log.d("RestaurantSelection", "Starting ItineraryDisplayActivity")
-                        Log.d("RestaurantSelection", "Time range: $startHour to $endHour, Budget: $$totalBudget")
+                        Log.d("RestaurantSelection", "Time range: $startHour to $endHour, Budget: $$totalBudget, HungryNow: $isHungryNow")
                         Log.d("RestaurantSelection", "Activity types: $activityTypes")
                         Log.d("RestaurantSelection", "Food types: $selectedFoodTypes")
                         
@@ -185,6 +188,7 @@ fun RestaurantSelectionScreen(
                             putExtra("startHour", startHour)
                             putExtra("endHour", endHour)
                             putExtra("totalBudget", totalBudget)
+                            putExtra("isHungryNow", isHungryNow)
                             putExtra("activityTypes", activityTypes.toTypedArray())
                             putExtra("foodTypes", selectedFoodTypes.toTypedArray())
                         }

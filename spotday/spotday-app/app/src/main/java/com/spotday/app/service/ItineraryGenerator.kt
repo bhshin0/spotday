@@ -21,6 +21,8 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
         private const val SHOPPING_DURATION_MINUTES = 90 // 1.5 hours
         private const val TRAVEL_TIME_MINUTES = 30
         private const val BUDGET_BUFFER_PERCENTAGE = 1.2 // Allow 20% over budget
+        private const val MINIMUM_MEAL_SPACING_HOURS = 4 // Don't schedule meals closer than 4 hours apart
+        private const val HUNGRY_MODE_MEAL_INTERVAL_HOURS = 5 // Space meals 5 hours apart in hungry mode
         
         // Meal time windows
         private const val BREAKFAST_START_HOUR = 7
@@ -95,37 +97,142 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
         val mealType: String? = null // "breakfast", "lunch", or "dinner" if type is "meal"
     )
     
-    // Create timeline skeleton with meal slots at appropriate times
-    private fun createTimelineSkeleton(
-        startHour: Int, 
+    // Create interval-based schedule for hungry mode (meals every 5 hours)
+    private fun createIntervalBasedSchedule(
+        startHour: Int,
         endHour: Int, 
         activityCount: Int
     ): List<StopSlot> {
         val slots = mutableListOf<StopSlot>()
         val totalHours = endHour - startHour
         
-        // Determine which meals to include
+        Log.d("ItineraryGenerator", "Creating interval-based schedule (hungry mode)")
+        
+        // First meal at start
+        slots.add(StopSlot(startHour, "meal", "meal1"))
+        
+        // Add meals every 5 hours
+        var nextMealHour = startHour + HUNGRY_MODE_MEAL_INTERVAL_HOURS
+        var mealIndex = 2
+        while (nextMealHour < endHour - 1) {
+            slots.add(StopSlot(nextMealHour, "meal", "meal$mealIndex"))
+            nextMealHour += HUNGRY_MODE_MEAL_INTERVAL_HOURS
+            mealIndex++
+        }
+        
+        Log.d("ItineraryGenerator", "Scheduled ${slots.size} meals in hungry mode")
+        
+        // Distribute activities between meals
+        if (slots.size == 1) {
+            // Only one meal, distribute activities after it
+            val hourGap = if (activityCount > 1) {
+                (endHour - startHour - 1) / activityCount
+            } else {
+                (endHour - startHour) / 2
+            }
+            for (i in 0 until activityCount) {
+                val activityHour = startHour + 1 + (hourGap * i)
+                if (activityHour < endHour) {
+                    slots.add(StopSlot(activityHour, "activity"))
+                }
+            }
+        } else {
+            // Multiple meals, distribute activities between them
+            val allSlots = mutableListOf<StopSlot>()
+            
+            // Activity before first meal (if time allows)
+            val mealSlots = slots.filter { it.type == "meal" }
+            if (mealSlots.first().idealHour - startHour >= 2) {
+                allSlots.add(StopSlot(startHour, "activity"))
+            }
+            
+            // Add meals and activities between them
+            for (i in mealSlots.indices) {
+                allSlots.add(mealSlots[i])
+                
+                // Add activity between this meal and next (or before end)
+                if (i < mealSlots.size - 1) {
+                    val gapHours = mealSlots[i + 1].idealHour - mealSlots[i].idealHour
+                    if (gapHours >= 3 && allSlots.count { it.type == "activity" } < activityCount) {
+                        val activityHour = mealSlots[i].idealHour + (gapHours / 2)
+                        allSlots.add(StopSlot(activityHour, "activity"))
+                    }
+                }
+            }
+            
+            // Activity after last meal (if time allows and we need more activities)
+            if (endHour - mealSlots.last().idealHour >= 2 && allSlots.count { it.type == "activity" } < activityCount) {
+                allSlots.add(StopSlot(mealSlots.last().idealHour + 2, "activity"))
+            }
+            
+            slots.clear()
+            slots.addAll(allSlots)
+        }
+        
+        // Sort by ideal hour
+        slots.sortBy { it.idealHour }
+        
+        Log.d("ItineraryGenerator", "Interval-based timeline: ${slots.size} total slots")
+        return slots
+    }
+    
+    // Create timeline skeleton with meal slots at appropriate times
+    private fun createTimelineSkeleton(
+        startHour: Int, 
+        endHour: Int, 
+        activityCount: Int,
+        isHungryNow: Boolean = false
+    ): List<StopSlot> {
+        // Branch based on mode
+        if (isHungryNow) {
+            return createIntervalBasedSchedule(startHour, endHour, activityCount)
+        }
+        
+        // Traditional time-based scheduling
+        val slots = mutableListOf<StopSlot>()
+        val totalHours = endHour - startHour
+        
+        // Determine which meals to include with proper spacing
         val hasBreakfast = shouldIncludeBreakfast(startHour)
         val hasLunch = shouldIncludeLunch(startHour, endHour)
         val hasDinner = shouldIncludeDinner(endHour)
         
-        Log.d("ItineraryGenerator", "Meals: breakfast=$hasBreakfast, lunch=$hasLunch, dinner=$hasDinner")
+        Log.d("ItineraryGenerator", "Meal candidates: breakfast=$hasBreakfast, lunch=$hasLunch, dinner=$hasDinner")
         
-        // Build timeline with meals as anchors
+        // Build meals list with spacing enforcement
+        val meals = mutableListOf<Pair<String, Int>>() // (mealType, idealHour)
+        
         if (hasBreakfast) {
             val breakfastHour = getIdealMealHour("breakfast", startHour, endHour)
-            slots.add(StopSlot(breakfastHour, "meal", "breakfast"))
+            meals.add("breakfast" to breakfastHour)
         }
         
         if (hasLunch) {
             val lunchHour = getIdealMealHour("lunch", startHour, endHour)
-            slots.add(StopSlot(lunchHour, "meal", "lunch"))
+            // Only add lunch if it's at least 4 hours after breakfast
+            if (meals.isEmpty() || lunchHour - meals.last().second >= MINIMUM_MEAL_SPACING_HOURS) {
+                meals.add("lunch" to lunchHour)
+            } else {
+                Log.d("ItineraryGenerator", "Skipping lunch - too close to previous meal (${lunchHour - meals.last().second} hours)")
+            }
         }
         
         if (hasDinner) {
             val dinnerHour = getIdealMealHour("dinner", startHour, endHour)
-            slots.add(StopSlot(dinnerHour, "meal", "dinner"))
+            // Only add dinner if it's at least 4 hours after last meal
+            if (meals.isEmpty() || dinnerHour - meals.last().second >= MINIMUM_MEAL_SPACING_HOURS) {
+                meals.add("dinner" to dinnerHour)
+            } else {
+                Log.d("ItineraryGenerator", "Skipping dinner - too close to previous meal (${dinnerHour - meals.last().second} hours)")
+            }
         }
+        
+        // Convert to StopSlots
+        for ((mealType, hour) in meals) {
+            slots.add(StopSlot(hour, "meal", mealType))
+        }
+        
+        Log.d("ItineraryGenerator", "Final meals: ${meals.map { it.first }}")
         
         // Sort meals by time
         slots.sortBy { it.idealHour }
@@ -184,9 +291,10 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
         endHour: Int,
         totalBudget: Int,
         activityTypes: List<String>,
-        foodTypes: List<String>
+        foodTypes: List<String>,
+        isHungryNow: Boolean = false
     ): List<ItineraryStop> {
-        Log.d("ItineraryGenerator", "Generating itinerary from $startHour to $endHour, budget: $$totalBudget, activities: $activityTypes, food: $foodTypes")
+        Log.d("ItineraryGenerator", "Generating itinerary from $startHour to $endHour, budget: $$totalBudget, activities: $activityTypes, food: $foodTypes, hungryNow: $isHungryNow")
 
         val totalHours = endHour - startHour
         val budgetBuffer = (totalBudget * BUDGET_BUFFER_PERCENTAGE).toInt()
@@ -195,7 +303,7 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
         Log.d("ItineraryGenerator", "Total hours: $totalHours, target activities: $activityCount")
 
         // Create timeline skeleton with meal slots
-        val timelineSlots = createTimelineSkeleton(startHour, endHour, activityCount)
+        val timelineSlots = createTimelineSkeleton(startHour, endHour, activityCount, isHungryNow)
         
         // Fetch candidate places based on preferences
         val candidateActivities = mutableListOf<Place>()
@@ -285,7 +393,6 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
                         
                         if (selectedRestaurant != null) {
                             val distance = calculateDistance(currentLat, currentLng, selectedRestaurant.lat, selectedRestaurant.lng)
-                            
                             val stop = createStop(selectedRestaurant, calendar, RESTAURANT_DURATION_MINUTES, distance)
                             itinerary.add(stop)
                             currentCost += selectedRestaurant.estimatedCost

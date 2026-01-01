@@ -45,10 +45,11 @@ class ItineraryDisplayActivity : ComponentActivity() {
         val startHour = intent.getIntExtra("startHour", 9)
         val endHour = intent.getIntExtra("endHour", 17)
         val totalBudget = intent.getIntExtra("totalBudget", 100)
+        val isHungryNow = intent.getBooleanExtra("isHungryNow", false)
         val activityTypes = intent.getStringArrayExtra("activityTypes")?.toList() ?: emptyList()
         val foodTypes = intent.getStringArrayExtra("foodTypes")?.toList() ?: emptyList()
         
-        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, activities=$activityTypes, food=$foodTypes")
+        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, activities=$activityTypes, food=$foodTypes")
         
         setContent {
             SpotDayTheme {
@@ -60,6 +61,7 @@ class ItineraryDisplayActivity : ComponentActivity() {
                         startHour = startHour,
                         endHour = endHour,
                         totalBudget = totalBudget,
+                        isHungryNow = isHungryNow,
                         activityTypes = activityTypes,
                         foodTypes = foodTypes
                     )
@@ -73,6 +75,7 @@ class ItineraryViewModel(
     private val startHour: Int,
     private val endHour: Int,
     private val totalBudget: Int,
+    private val isHungryNow: Boolean,
     private val activityTypes: List<String>,
     private val foodTypes: List<String>,
     placesRepository: PlacesRepository
@@ -111,7 +114,8 @@ class ItineraryViewModel(
                         endHour = endHour,
                         totalBudget = totalBudget,
                         activityTypes = activityTypes,
-                        foodTypes = foodTypes
+                        foodTypes = foodTypes,
+                        isHungryNow = isHungryNow
                     )
                 }
                 Log.d("ItineraryViewModel", "Itinerary generated with ${itinerary.size} stops")
@@ -130,6 +134,7 @@ fun ItineraryDisplayScreen(
     startHour: Int,
     endHour: Int,
     totalBudget: Int,
+    isHungryNow: Boolean,
     activityTypes: List<String>,
     foodTypes: List<String>
 ) {
@@ -140,7 +145,7 @@ fun ItineraryDisplayScreen(
         factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return ItineraryViewModel(startHour, endHour, totalBudget, activityTypes, foodTypes, placesRepository) as T
+                return ItineraryViewModel(startHour, endHour, totalBudget, isHungryNow, activityTypes, foodTypes, placesRepository) as T
             }
         }
     )
@@ -529,6 +534,7 @@ private fun formatDistance(km: Double): String {
 }
 
 private fun estimateTravelTime(km: Double): Int {
-    // Assume 20 km/h average in SF (traffic, walking, transit)
-    return maxOf(5, (km / 0.33 * 60).toInt())
+    // Assume 20 km/h average in SF (0.33 km/min)
+    // Time = distance / speed = km / (km/min) = minutes
+    return maxOf(5, (km / 0.33).toInt())
 } 

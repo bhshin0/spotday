@@ -34,6 +34,7 @@ data class UserPreferences(
     val endHour: Int,
     val totalBudget: Int,
     val activityTypes: List<String>,
-    val foodTypes: List<String>
+    val foodTypes: List<String>,
+    val isHungryNow: Boolean = false
 )
 

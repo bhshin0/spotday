@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -34,6 +35,7 @@ fun WelcomeScreen() {
     val context = LocalContext.current
     var timeRange by remember { mutableStateOf(9f..17f) } // 9 AM to 5 PM default
     var budget by remember { mutableStateOf(100) }
+    var isHungryNow by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -77,6 +79,30 @@ fun WelcomeScreen() {
         
         Spacer(modifier = Modifier.height(32.dp))
         
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Are you hungry now?",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Switch(
+                checked = isHungryNow,
+                onCheckedChange = { isHungryNow = it }
+            )
+        }
+        
+        Text(
+            text = if (isHungryNow) "We'll start with a meal" else "Meals at traditional times",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
         Text(
             text = "What's your budget?",
             style = MaterialTheme.typography.titleMedium
@@ -108,8 +134,9 @@ fun WelcomeScreen() {
                         putExtra("startHour", startHour)
                         putExtra("endHour", endHour)
                         putExtra("totalBudget", budget)
+                        putExtra("isHungryNow", isHungryNow)
                     }
-                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity from $startHour to $endHour with $$budget budget")
+                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity from $startHour to $endHour with $$budget budget, hungryNow=$isHungryNow")
                     context.startActivity(intent)
                     (context as? ComponentActivity)?.finish()
                 } catch (e: Exception) {
