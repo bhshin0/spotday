@@ -17,7 +17,8 @@ class ActivityPreferencesActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        val totalHours = intent.getIntExtra("totalHours", 4)
+        val startHour = intent.getIntExtra("startHour", 9)
+        val endHour = intent.getIntExtra("endHour", 17)
         val totalBudget = intent.getIntExtra("totalBudget", 100)
         
         setContent {
@@ -26,7 +27,7 @@ class ActivityPreferencesActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ActivityPreferencesScreen(totalHours = totalHours, totalBudget = totalBudget)
+                    ActivityPreferencesScreen(startHour = startHour, endHour = endHour, totalBudget = totalBudget)
                 }
             }
         }
@@ -34,7 +35,7 @@ class ActivityPreferencesActivity : ComponentActivity() {
 }
 
 @Composable
-fun ActivityPreferencesScreen(totalHours: Int, totalBudget: Int) {
+fun ActivityPreferencesScreen(startHour: Int, endHour: Int, totalBudget: Int) {
     val context = LocalContext.current
     var museumsChecked by remember { mutableStateOf(false) }
     var parksChecked by remember { mutableStateOf(false) }
@@ -148,11 +149,12 @@ fun ActivityPreferencesScreen(totalHours: Int, totalBudget: Int) {
 
                     if (selectedActivities.isNotEmpty()) {
                         Log.d("ActivityPreferences", "Starting RestaurantSelectionActivity")
-                        Log.d("ActivityPreferences", "Total hours: $totalHours, Budget: $$totalBudget")
+                        Log.d("ActivityPreferences", "Time range: $startHour to $endHour, Budget: $$totalBudget")
                         Log.d("ActivityPreferences", "Activities: $selectedActivities")
                         
                         val intent = Intent(context, RestaurantSelectionActivity::class.java).apply {
-                            putExtra("totalHours", totalHours)
+                            putExtra("startHour", startHour)
+                            putExtra("endHour", endHour)
                             putExtra("totalBudget", totalBudget)
                             putExtra("activityTypes", selectedActivities.toTypedArray())
                         }

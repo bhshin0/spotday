@@ -32,7 +32,7 @@ class WelcomeActivity : ComponentActivity() {
 @Composable
 fun WelcomeScreen() {
     val context = LocalContext.current
-    var time by remember { mutableStateOf(4) }
+    var timeRange by remember { mutableStateOf(9f..17f) } // 9 AM to 5 PM default
     var budget by remember { mutableStateOf(100) }
 
     Column(
@@ -56,21 +56,21 @@ fun WelcomeScreen() {
         Spacer(modifier = Modifier.height(48.dp))
         
         Text(
-            text = "How much time do you have?",
+            text = "What time will you be out?",
             style = MaterialTheme.typography.titleMedium
         )
         
         Spacer(modifier = Modifier.height(16.dp))
         
-        Slider(
-            value = time.toFloat(),
-            onValueChange = { time = it.toInt() },
-            valueRange = 2f..8f,
-            steps = 6
+        RangeSlider(
+            value = timeRange,
+            onValueChange = { timeRange = it },
+            valueRange = 6f..23f, // 6 AM to 11 PM
+            steps = 16 // Every hour
         )
         
         Text(
-            text = "$time hours",
+            text = "${formatTime(timeRange.start.toInt())} - ${formatTime(timeRange.endInclusive.toInt())}",
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(top = 8.dp)
         )
@@ -102,11 +102,14 @@ fun WelcomeScreen() {
         Button(
             onClick = {
                 try {
+                    val startHour = timeRange.start.toInt()
+                    val endHour = timeRange.endInclusive.toInt()
                     val intent = Intent(context, ActivityPreferencesActivity::class.java).apply {
-                        putExtra("totalHours", time)
+                        putExtra("startHour", startHour)
+                        putExtra("endHour", endHour)
                         putExtra("totalBudget", budget)
                     }
-                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity with $time hours and $$budget budget")
+                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity from $startHour to $endHour with $$budget budget")
                     context.startActivity(intent)
                     (context as? ComponentActivity)?.finish()
                 } catch (e: Exception) {
@@ -118,4 +121,15 @@ fun WelcomeScreen() {
             Text("Continue")
         }
     }
+}
+
+// Helper function to format hour as time (e.g., 9 -> "9:00 AM", 14 -> "2:00 PM")
+fun formatTime(hour: Int): String {
+    val period = if (hour < 12) "AM" else "PM"
+    val displayHour = when {
+        hour == 0 -> 12
+        hour > 12 -> hour - 12
+        else -> hour
+    }
+    return "$displayHour:00 $period"
 } 

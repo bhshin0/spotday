@@ -25,11 +25,13 @@ data class ItineraryStop(
     val place: Place,
     val startTime: String,
     val endTime: String,
-    val durationMinutes: Int
+    val durationMinutes: Int,
+    val distanceFromPreviousKm: Double = 0.0
 )
 
 data class UserPreferences(
-    val totalHours: Int,
+    val startHour: Int,
+    val endHour: Int,
     val totalBudget: Int,
     val activityTypes: List<String>,
     val foodTypes: List<String>

@@ -31,7 +31,9 @@ import com.spotday.app.model.ItineraryStop
 import com.spotday.app.model.PlaceType
 import com.spotday.app.service.ItineraryGenerator
 import com.spotday.app.ui.theme.SpotDayTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // San Francisco center
 private val SF_CENTER = LatLng(37.7749, -122.4194)
@@ -40,12 +42,13 @@ class ItineraryDisplayActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        val totalHours = intent.getIntExtra("totalHours", 4)
+        val startHour = intent.getIntExtra("startHour", 9)
+        val endHour = intent.getIntExtra("endHour", 17)
         val totalBudget = intent.getIntExtra("totalBudget", 100)
         val activityTypes = intent.getStringArrayExtra("activityTypes")?.toList() ?: emptyList()
         val foodTypes = intent.getStringArrayExtra("foodTypes")?.toList() ?: emptyList()
         
-        Log.d("ItineraryDisplay", "Received: totalHours=$totalHours, budget=$totalBudget, activities=$activityTypes, food=$foodTypes")
+        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, activities=$activityTypes, food=$foodTypes")
         
         setContent {
             SpotDayTheme {
@@ -54,7 +57,8 @@ class ItineraryDisplayActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     ItineraryDisplayScreen(
-                        totalHours = totalHours,
+                        startHour = startHour,
+                        endHour = endHour,
                         totalBudget = totalBudget,
                         activityTypes = activityTypes,
                         foodTypes = foodTypes
@@ -66,7 +70,8 @@ class ItineraryDisplayActivity : ComponentActivity() {
 }
 
 class ItineraryViewModel(
-    private val totalHours: Int,
+    private val startHour: Int,
+    private val endHour: Int,
     private val totalBudget: Int,
     private val activityTypes: List<String>,
     private val foodTypes: List<String>,
@@ -99,12 +104,16 @@ class ItineraryViewModel(
                 isLoading = true
                 error = null
                 Log.d("ItineraryViewModel", "Generating itinerary...")
-                itinerary = itineraryGenerator.generateItinerary(
-                    totalHours = totalHours,
-                    totalBudget = totalBudget,
-                    activityTypes = activityTypes,
-                    foodTypes = foodTypes
-                )
+                // Run on background thread to avoid ANR
+                itinerary = withContext(Dispatchers.IO) {
+                    itineraryGenerator.generateItinerary(
+                        startHour = startHour,
+                        endHour = endHour,
+                        totalBudget = totalBudget,
+                        activityTypes = activityTypes,
+                        foodTypes = foodTypes
+                    )
+                }
                 Log.d("ItineraryViewModel", "Itinerary generated with ${itinerary.size} stops")
                 isLoading = false
             } catch (e: Exception) {
@@ -118,7 +127,8 @@ class ItineraryViewModel(
 
 @Composable
 fun ItineraryDisplayScreen(
-    totalHours: Int,
+    startHour: Int,
+    endHour: Int,
     totalBudget: Int,
     activityTypes: List<String>,
     foodTypes: List<String>
@@ -130,7 +140,7 @@ fun ItineraryDisplayScreen(
         factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return ItineraryViewModel(totalHours, totalBudget, activityTypes, foodTypes, placesRepository) as T
+                return ItineraryViewModel(startHour, endHour, totalBudget, activityTypes, foodTypes, placesRepository) as T
             }
         }
     )
@@ -218,6 +228,21 @@ fun ItineraryContent(
 
 @Composable
 fun ItineraryMap(itinerary: List<ItineraryStop>) {
+    // Only load Google Maps if we have itinerary data
+    if (itinerary.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Map will appear here",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+    
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(SF_CENTER, 12f)
     }
@@ -225,8 +250,18 @@ fun ItineraryMap(itinerary: List<ItineraryStop>) {
     GoogleMap(
         modifier = Modifier.fillMaxSize(),
         cameraPositionState = cameraPositionState,
-        properties = MapProperties(isMyLocationEnabled = false),
-        uiSettings = MapUiSettings(zoomControlsEnabled = true)
+        properties = MapProperties(
+            isMyLocationEnabled = false,
+            // Reduce map complexity for better performance
+            isTrafficEnabled = false,
+            isBuildingEnabled = false
+        ),
+        uiSettings = MapUiSettings(
+            zoomControlsEnabled = true,
+            // Disable expensive gestures on slow emulators
+            rotationGesturesEnabled = false,
+            tiltGesturesEnabled = false
+        )
     ) {
         // Add markers for each stop
         itinerary.forEach { stop ->
@@ -291,7 +326,7 @@ fun ItineraryTimeline(
                 
                 // Add travel time indicator between stops
                 if (index < itinerary.size - 1) {
-                    TravelTimeIndicator()
+                    TravelTimeIndicator(distanceKm = itinerary[index + 1].distanceFromPreviousKm)
                 }
             }
             
@@ -462,7 +497,7 @@ fun ItineraryStopCard(stop: ItineraryStop) {
 }
 
 @Composable
-fun TravelTimeIndicator() {
+fun TravelTimeIndicator(distanceKm: Double) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -474,7 +509,7 @@ fun TravelTimeIndicator() {
             color = MaterialTheme.colorScheme.outlineVariant
         )
         Text(
-            text = "  🚗 30 min travel  ",
+            text = "  🚗 ${formatDistance(distanceKm)} • ~${estimateTravelTime(distanceKm)} min  ",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -483,4 +518,17 @@ fun TravelTimeIndicator() {
             color = MaterialTheme.colorScheme.outlineVariant
         )
     }
+}
+
+private fun formatDistance(km: Double): String {
+    return if (km < 1.0) {
+        "${(km * 1000).toInt()}m"
+    } else {
+        "${"%.1f".format(km)}km"
+    }
+}
+
+private fun estimateTravelTime(km: Double): Int {
+    // Assume 20 km/h average in SF (traffic, walking, transit)
+    return maxOf(5, (km / 0.33 * 60).toInt())
 } 

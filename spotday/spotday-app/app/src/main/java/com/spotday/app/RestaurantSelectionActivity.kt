@@ -17,7 +17,8 @@ class RestaurantSelectionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        val totalHours = intent.getIntExtra("totalHours", 4)
+        val startHour = intent.getIntExtra("startHour", 9)
+        val endHour = intent.getIntExtra("endHour", 17)
         val totalBudget = intent.getIntExtra("totalBudget", 100)
         val activityTypes = intent.getStringArrayExtra("activityTypes") ?: arrayOf()
         
@@ -28,7 +29,8 @@ class RestaurantSelectionActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     RestaurantSelectionScreen(
-                        totalHours = totalHours,
+                        startHour = startHour,
+                        endHour = endHour,
                         totalBudget = totalBudget,
                         activityTypes = activityTypes.toList()
                     )
@@ -40,7 +42,8 @@ class RestaurantSelectionActivity : ComponentActivity() {
 
 @Composable
 fun RestaurantSelectionScreen(
-    totalHours: Int,
+    startHour: Int,
+    endHour: Int,
     totalBudget: Int,
     activityTypes: List<String>
 ) {
@@ -174,12 +177,13 @@ fun RestaurantSelectionScreen(
 
                     if (selectedFoodTypes.isNotEmpty()) {
                         Log.d("RestaurantSelection", "Starting ItineraryDisplayActivity")
-                        Log.d("RestaurantSelection", "Total hours: $totalHours, Budget: $$totalBudget")
+                        Log.d("RestaurantSelection", "Time range: $startHour to $endHour, Budget: $$totalBudget")
                         Log.d("RestaurantSelection", "Activity types: $activityTypes")
                         Log.d("RestaurantSelection", "Food types: $selectedFoodTypes")
                         
                         val intent = Intent(context, ItineraryDisplayActivity::class.java).apply {
-                            putExtra("totalHours", totalHours)
+                            putExtra("startHour", startHour)
+                            putExtra("endHour", endHour)
                             putExtra("totalBudget", totalBudget)
                             putExtra("activityTypes", activityTypes.toTypedArray())
                             putExtra("foodTypes", selectedFoodTypes.toTypedArray())
