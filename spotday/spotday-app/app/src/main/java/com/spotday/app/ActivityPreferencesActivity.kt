@@ -174,11 +174,11 @@ fun ActivityPreferencesScreen(
                     if (historicSitesChecked) selectedActivities.add("historic_sites")
                     if (shoppingChecked) selectedActivities.add("shopping")
 
-                    Log.d("ActivityPreferences", "Starting RestaurantSelectionActivity")
+                    Log.d("ActivityPreferences", "Starting EventSelectionActivity")
                     Log.d("ActivityPreferences", "Time range: $startHour to $endHour, Budget: $$totalBudget, HungryNow: $isHungryNow, Spontaneous: $isSpontaneousMode")
                     Log.d("ActivityPreferences", "Activities: ${if (selectedActivities.isEmpty()) "NONE (food/nightlife only)" else selectedActivities.toString()}")
                     
-                    val intent = Intent(context, RestaurantSelectionActivity::class.java).apply {
+                    val intent = Intent(context, EventSelectionActivity::class.java).apply {
                         putExtra("startHour", startHour)
                         putExtra("endHour", endHour)
                         putExtra("totalBudget", totalBudget)

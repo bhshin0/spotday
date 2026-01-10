@@ -10,6 +10,33 @@ enum class PlaceType {
     NIGHTLIFE
 }
 
+enum class EventType {
+    CONCERT,
+    SPORTS,
+    THEATER,
+    COMEDY,
+    FOOD_FESTIVAL,
+    STREET_FAIR,
+    CLASS_WORKSHOP
+}
+
+data class Event(
+    val id: String,
+    val name: String,
+    val description: String,
+    val eventType: EventType,
+    val venueName: String,
+    val venueLatitude: Double,
+    val venueLongitude: Double,
+    val startHour: Int,      // 0-23
+    val startMinute: Int,    // 0-59
+    val durationMinutes: Int,
+    val priceMin: Double?,
+    val priceMax: Double?,
+    val isSoldOut: Boolean = false,
+    val ticketUrl: String? = null
+)
+
 data class Place(
     val id: String,
     val name: String,
@@ -38,7 +65,8 @@ data class ItineraryStop(
     val endTime: String,
     val durationMinutes: Int,
     val distanceFromPreviousKm: Double = 0.0,
-    val transitEstimate: TransitEstimate? = null
+    val transitEstimate: TransitEstimate? = null,
+    val event: Event? = null  // Non-null if this stop is for a scheduled event
 )
 
 data class UserPreferences(
@@ -51,6 +79,7 @@ data class UserPreferences(
     val isSpontaneousMode: Boolean = false,
     val startLatitude: Double? = null,  // null = use random SF location
     val startLongitude: Double? = null,
-    val nightlifeTypes: List<String> = emptyList()
+    val nightlifeTypes: List<String> = emptyList(),
+    val selectedEventIds: List<String> = emptyList()
 )
 

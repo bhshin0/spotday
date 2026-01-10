@@ -25,6 +25,7 @@ class RestaurantSelectionActivity : ComponentActivity() {
         val isHungryNow = intent.getBooleanExtra("isHungryNow", false)
         val isSpontaneousMode = intent.getBooleanExtra("isSpontaneousMode", false)
         val activityTypes = intent.getStringArrayExtra("activityTypes") ?: arrayOf()
+        val selectedEventIds = intent.getStringArrayExtra("selectedEventIds") ?: arrayOf()
         val startLat = intent.getDoubleExtra("startLatitude", 0.0).takeIf { it != 0.0 }
         val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
         
@@ -41,6 +42,7 @@ class RestaurantSelectionActivity : ComponentActivity() {
                         isHungryNow = isHungryNow,
                         isSpontaneousMode = isSpontaneousMode,
                         activityTypes = activityTypes.toList(),
+                        selectedEventIds = selectedEventIds.toList(),
                         startLatitude = startLat,
                         startLongitude = startLng
                     )
@@ -58,6 +60,7 @@ fun RestaurantSelectionScreen(
     isHungryNow: Boolean,
     isSpontaneousMode: Boolean = false,
     activityTypes: List<String>,
+    selectedEventIds: List<String> = emptyList(),
     startLatitude: Double? = null,
     startLongitude: Double? = null
 ) {
@@ -319,6 +322,7 @@ fun RestaurantSelectionScreen(
                         Log.d("RestaurantSelection", "Activity types: $activityTypes")
                         Log.d("RestaurantSelection", "Food types: $selectedFoodTypes")
                         Log.d("RestaurantSelection", "Nightlife types: $selectedNightlifeTypes")
+                        Log.d("RestaurantSelection", "Selected events: $selectedEventIds")
                         if (startLatitude != null && startLongitude != null) {
                             Log.d("RestaurantSelection", "Starting location: ($startLatitude, $startLongitude)")
                         }
@@ -332,6 +336,7 @@ fun RestaurantSelectionScreen(
                             putExtra("activityTypes", activityTypes.toTypedArray())
                             putExtra("foodTypes", selectedFoodTypes.toTypedArray())
                             putExtra("nightlifeTypes", selectedNightlifeTypes.toTypedArray())
+                            putExtra("selectedEventIds", selectedEventIds.toTypedArray())
                             if (startLatitude != null) putExtra("startLatitude", startLatitude)
                             if (startLongitude != null) putExtra("startLongitude", startLongitude)
                         }

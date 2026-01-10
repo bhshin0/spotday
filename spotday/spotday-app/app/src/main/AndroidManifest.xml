@@ -29,6 +29,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".ActivityPreferencesActivity" />
+        <activity android:name=".EventSelectionActivity" />
         <activity android:name=".RestaurantSelectionActivity" />
         <activity android:name=".ItineraryDisplayActivity" />
     </application>

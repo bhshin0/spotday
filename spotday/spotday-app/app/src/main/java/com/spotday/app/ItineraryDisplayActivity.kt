@@ -27,6 +27,8 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
 import com.spotday.app.api.PlacesRepository
+import com.spotday.app.model.Event
+import com.spotday.app.model.EventType
 import com.spotday.app.model.ItineraryStop
 import com.spotday.app.model.PlaceType
 import com.spotday.app.model.TransitEstimate
@@ -53,10 +55,11 @@ class ItineraryDisplayActivity : ComponentActivity() {
         val activityTypes = intent.getStringArrayExtra("activityTypes")?.toList() ?: emptyList()
         val foodTypes = intent.getStringArrayExtra("foodTypes")?.toList() ?: emptyList()
         val nightlifeTypes = intent.getStringArrayExtra("nightlifeTypes")?.toList() ?: emptyList()
+        val selectedEventIds = intent.getStringArrayExtra("selectedEventIds")?.toList() ?: emptyList()
         val startLat = intent.getDoubleExtra("startLatitude", 0.0).takeIf { it != 0.0 }
         val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
         
-        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode, activities=$activityTypes, food=$foodTypes, nightlife=$nightlifeTypes")
+        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode, activities=$activityTypes, food=$foodTypes, nightlife=$nightlifeTypes, events=${selectedEventIds.size}")
         if (startLat != null && startLng != null) {
             Log.d("ItineraryDisplay", "Starting location: ($startLat, $startLng)")
         }
@@ -77,7 +80,8 @@ class ItineraryDisplayActivity : ComponentActivity() {
                         startLongitude = startLng,
                         activityTypes = activityTypes,
                         foodTypes = foodTypes,
-                        nightlifeTypes = nightlifeTypes
+                        nightlifeTypes = nightlifeTypes,
+                        selectedEventIds = selectedEventIds
                     )
                 }
             }
@@ -96,6 +100,7 @@ class ItineraryViewModel(
     private val activityTypes: List<String>,
     private val foodTypes: List<String>,
     private val nightlifeTypes: List<String>,
+    private val selectedEventIds: List<String>,
     placesRepository: PlacesRepository
 ) : ViewModel() {
     
@@ -149,7 +154,8 @@ class ItineraryViewModel(
                         userStartLat = startLatitude,
                         userStartLng = startLongitude,
                         nightlifeTypes = nightlifeTypes,
-                        avoidOutdoor = avoidOutdoorParam
+                        avoidOutdoor = avoidOutdoorParam,
+                        selectedEventIds = selectedEventIds
                     )
                 }
                 Log.d("ItineraryViewModel", "Itinerary generated with ${itinerary.size} stops")
@@ -174,7 +180,8 @@ fun ItineraryDisplayScreen(
     startLongitude: Double? = null,
     activityTypes: List<String>,
     foodTypes: List<String>,
-    nightlifeTypes: List<String> = emptyList()
+    nightlifeTypes: List<String> = emptyList(),
+    selectedEventIds: List<String> = emptyList()
 ) {
     val context = LocalContext.current
     val placesRepository = remember { PlacesRepository(context) }
@@ -194,6 +201,7 @@ fun ItineraryDisplayScreen(
                     activityTypes, 
                     foodTypes,
                     nightlifeTypes,
+                    selectedEventIds,
                     placesRepository
                 ) as T
             }
@@ -491,19 +499,22 @@ fun BudgetSummaryCard(budget: Int, estimatedCost: Int) {
 @Composable
 fun ItineraryStopCard(stop: ItineraryStop) {
     val isNightlife = stop.place.type == PlaceType.NIGHTLIFE
+    val isEvent = stop.event != null
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isEvent) 4.dp else 2.dp),
         shape = RoundedCornerShape(12.dp),
-        colors = if (isNightlife) {
-            CardDefaults.cardColors(
+        colors = when {
+            isEvent -> CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            )
+            isNightlife -> CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer
             )
-        } else {
-            CardDefaults.cardColors()
+            else -> CardDefaults.cardColors()
         }
     ) {
         Column(
@@ -514,19 +525,32 @@ fun ItineraryStopCard(stop: ItineraryStop) {
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isNightlife) {
-                    Text(
-                        text = "🍸 ",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                }
+                // Show appropriate emoji based on type
+                Text(
+                    text = when {
+                        isEvent -> "${getEventTypeEmoji(stop.event!!.eventType)} "
+                        isNightlife -> "🍸 "
+                        else -> ""
+                    },
+                    style = MaterialTheme.typography.titleLarge
+                )
                 Text(
                     text = stop.place.name,
                     style = MaterialTheme.typography.titleLarge,
-                    color = if (isNightlife) 
-                        MaterialTheme.colorScheme.onTertiaryContainer
-                    else 
-                        MaterialTheme.colorScheme.primary
+                    color = when {
+                        isEvent -> MaterialTheme.colorScheme.onSecondaryContainer
+                        isNightlife -> MaterialTheme.colorScheme.onTertiaryContainer
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+                )
+            }
+            
+            // Show venue name for events
+            if (isEvent && stop.event != null) {
+                Text(
+                    text = "@ ${stop.event.venueName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
                 )
             }
             
@@ -543,20 +567,24 @@ fun ItineraryStopCard(stop: ItineraryStop) {
                 )
                 
                 Text(
-                    text = when (stop.place.type) {
-                        PlaceType.MUSEUM -> "Museum"
-                        PlaceType.PARK -> "Park"
-                        PlaceType.RESTAURANT -> "Restaurant"
-                        PlaceType.WATERFRONT -> "Waterfront"
-                        PlaceType.HISTORIC_SITE -> "Historic Site"
-                        PlaceType.SHOPPING -> "Shopping"
-                        PlaceType.NIGHTLIFE -> "Nightlife"
+                    text = when {
+                        isEvent -> getEventTypeLabel(stop.event!!.eventType)
+                        else -> when (stop.place.type) {
+                            PlaceType.MUSEUM -> "Museum"
+                            PlaceType.PARK -> "Park"
+                            PlaceType.RESTAURANT -> "Restaurant"
+                            PlaceType.WATERFRONT -> "Waterfront"
+                            PlaceType.HISTORIC_SITE -> "Historic Site"
+                            PlaceType.SHOPPING -> "Shopping"
+                            PlaceType.NIGHTLIFE -> "Nightlife"
+                        }
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (isNightlife)
-                        MaterialTheme.colorScheme.tertiary
-                    else
-                        MaterialTheme.colorScheme.secondary
+                    color = when {
+                        isEvent -> MaterialTheme.colorScheme.secondary
+                        isNightlife -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.secondary
+                    }
                 )
             }
             
@@ -565,13 +593,14 @@ fun ItineraryStopCard(stop: ItineraryStop) {
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "⭐ ${stop.place.rating}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
-                Spacer(modifier = Modifier.width(16.dp))
+                if (!isEvent) {
+                    Text(
+                        text = "⭐ ${stop.place.rating}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                }
                 
                 Text(
                     text = "${stop.durationMinutes} minutes",
@@ -589,8 +618,42 @@ fun ItineraryStopCard(stop: ItineraryStop) {
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                
+                // Show "Fixed" badge for events
+                if (isEvent) {
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "📌 Fixed",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
             }
         }
+    }
+}
+
+private fun getEventTypeEmoji(eventType: EventType): String {
+    return when (eventType) {
+        EventType.CONCERT -> "🎵"
+        EventType.SPORTS -> "⚾"
+        EventType.THEATER -> "🎭"
+        EventType.COMEDY -> "😂"
+        EventType.FOOD_FESTIVAL -> "🍔"
+        EventType.STREET_FAIR -> "🎪"
+        EventType.CLASS_WORKSHOP -> "🎨"
+    }
+}
+
+private fun getEventTypeLabel(eventType: EventType): String {
+    return when (eventType) {
+        EventType.CONCERT -> "Concert"
+        EventType.SPORTS -> "Sports"
+        EventType.THEATER -> "Theater"
+        EventType.COMEDY -> "Comedy"
+        EventType.FOOD_FESTIVAL -> "Food Festival"
+        EventType.STREET_FAIR -> "Street Fair"
+        EventType.CLASS_WORKSHOP -> "Class/Workshop"
     }
 }
 

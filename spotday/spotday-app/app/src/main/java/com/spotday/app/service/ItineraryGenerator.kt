@@ -1,7 +1,9 @@
 package com.spotday.app.service
 
 import android.util.Log
+import com.spotday.app.api.EventsRepository
 import com.spotday.app.api.PlacesRepository
+import com.spotday.app.model.Event
 import com.spotday.app.model.ItineraryStop
 import com.spotday.app.model.Place
 import com.spotday.app.model.PlaceType
@@ -11,7 +13,10 @@ import java.util.Calendar
 import java.util.Locale
 import kotlin.math.*
 
-class ItineraryGenerator(private val placesRepository: PlacesRepository) {
+class ItineraryGenerator(
+    private val placesRepository: PlacesRepository,
+    private val eventsRepository: EventsRepository = EventsRepository()
+) {
 
     companion object {
         private const val MUSEUM_DURATION_MINUTES = 120 // 2 hours
@@ -418,9 +423,10 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
         userStartLat: Double? = null,
         userStartLng: Double? = null,
         nightlifeTypes: List<String> = emptyList(),
-        avoidOutdoor: Boolean = false
+        avoidOutdoor: Boolean = false,
+        selectedEventIds: List<String> = emptyList()
     ): List<ItineraryStop> {
-        Log.d("ItineraryGenerator", "Generating itinerary from $startHour to $endHour, budget: $$totalBudget, activities: $activityTypes, food: $foodTypes, hungryNow: $isHungryNow, spontaneous: $isSpontaneousMode, nightlife: $nightlifeTypes, avoidOutdoor: $avoidOutdoor")
+        Log.d("ItineraryGenerator", "Generating itinerary from $startHour to $endHour, budget: $$totalBudget, activities: $activityTypes, food: $foodTypes, hungryNow: $isHungryNow, spontaneous: $isSpontaneousMode, nightlife: $nightlifeTypes, avoidOutdoor: $avoidOutdoor, events: ${selectedEventIds.size}")
 
         val totalHours = endHour - startHour
         val budgetBuffer = (totalBudget * BUDGET_BUFFER_PERCENTAGE).toInt()
@@ -435,6 +441,20 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
         if (isBarCrawl) {
             Log.d("ItineraryGenerator", "BAR CRAWL MODE triggered (nightlife only, no activities)")
             return generateBarCrawl(startHour, endHour, totalBudget, nightlifeTypes, userStartLat, userStartLng)
+        }
+
+        // Fetch selected events (if any) - these are FIXED anchors
+        val selectedEvents = if (selectedEventIds.isNotEmpty()) {
+            eventsRepository.getEventsByIds(selectedEventIds).sortedBy { it.startHour * 60 + it.startMinute }
+        } else {
+            emptyList()
+        }
+        
+        if (selectedEvents.isNotEmpty()) {
+            Log.d("ItineraryGenerator", "EVENT MODE: ${selectedEvents.size} fixed events")
+            selectedEvents.forEach { event ->
+                Log.d("ItineraryGenerator", "  - ${event.name} at ${event.startHour}:${event.startMinute.toString().padStart(2, '0')} (${event.durationMinutes} min)")
+            }
         }
 
         // Create timeline skeleton with meal slots
@@ -492,6 +512,24 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
         // Track used places to avoid duplicates and current location for route optimization
         val usedPlaces = mutableSetOf<String>()
         
+        // Track event time windows to avoid scheduling conflicts
+        // Each event blocks (startHour*60 + startMinute) to (startHour*60 + startMinute + duration)
+        val eventTimeBlocks = selectedEvents.map { event ->
+            val startMinutes = event.startHour * 60 + event.startMinute
+            val endMinutes = startMinutes + event.durationMinutes
+            Triple(event, startMinutes, endMinutes)
+        }
+        
+        // Helper to check if a proposed slot conflicts with any event
+        fun conflictsWithEvent(hour: Int, durationMinutes: Int): Boolean {
+            val slotStart = hour * 60
+            val slotEnd = slotStart + durationMinutes
+            return eventTimeBlocks.any { (_, eventStart, eventEnd) ->
+                // Check for overlap: slot starts during event or event starts during slot
+                (slotStart in eventStart until eventEnd) || (eventStart in slotStart until slotEnd)
+            }
+        }
+        
         // Initialize starting location
         val (initialLat, initialLng) = when {
             userStartLat != null && userStartLng != null -> {
@@ -528,7 +566,53 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
             set(Calendar.SECOND, 0)
         }
         
+        // Build a combined timeline of slots + events, sorted by time
+        var eventIndex = 0
+        
         for (slot in timelineSlots) {
+            val slotTimeMinutes = slot.idealHour * 60
+            
+            // First, add any events that start before this slot
+            while (eventIndex < selectedEvents.size) {
+                val event = selectedEvents[eventIndex]
+                val eventStartMinutes = event.startHour * 60 + event.startMinute
+                
+                if (eventStartMinutes <= slotTimeMinutes) {
+                    // Add this event
+                    val distance = calculateDistance(currentLat, currentLng, event.venueLatitude, event.venueLongitude)
+                    val eventStop = createEventStop(event, distance)
+                    itinerary.add(eventStop)
+                    
+                    // Update cost and location
+                    currentCost += event.priceMin?.toInt() ?: 0
+                    currentLat = event.venueLatitude
+                    currentLng = event.venueLongitude
+                    totalDistance += distance
+                    
+                    Log.d("ItineraryGenerator", "Added EVENT: ${event.name} at ${event.startHour}:${event.startMinute.toString().padStart(2, '0')} (fixed anchor)")
+                    
+                    // Update calendar to after event ends
+                    calendar.set(Calendar.HOUR_OF_DAY, event.startHour)
+                    calendar.set(Calendar.MINUTE, event.startMinute)
+                    calendar.add(Calendar.MINUTE, event.durationMinutes + TRAVEL_TIME_MINUTES)
+                    
+                    eventIndex++
+                } else {
+                    break
+                }
+            }
+            
+            // Check if this slot conflicts with any event
+            val slotDuration = when (slot.type) {
+                "meal" -> RESTAURANT_DURATION_MINUTES
+                else -> MUSEUM_DURATION_MINUTES // Default activity duration
+            }
+            
+            if (conflictsWithEvent(slot.idealHour, slotDuration)) {
+                Log.d("ItineraryGenerator", "Skipping ${slot.type} at ${slot.idealHour}:00 - conflicts with event")
+                continue
+            }
+            
             // Set calendar to ideal hour for this slot
             calendar.set(Calendar.HOUR_OF_DAY, slot.idealHour)
             calendar.set(Calendar.MINUTE, 0)
@@ -618,6 +702,22 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
             if (calendar.get(Calendar.HOUR_OF_DAY) >= endHour) {
                 break
             }
+        }
+        
+        // Add any remaining events that come after all slots
+        while (eventIndex < selectedEvents.size) {
+            val event = selectedEvents[eventIndex]
+            val distance = calculateDistance(currentLat, currentLng, event.venueLatitude, event.venueLongitude)
+            val eventStop = createEventStop(event, distance)
+            itinerary.add(eventStop)
+            
+            currentCost += event.priceMin?.toInt() ?: 0
+            currentLat = event.venueLatitude
+            currentLng = event.venueLongitude
+            totalDistance += distance
+            
+            Log.d("ItineraryGenerator", "Added EVENT (end): ${event.name} at ${event.startHour}:${event.startMinute.toString().padStart(2, '0')}")
+            eventIndex++
         }
         
         // Add nightlife venue after activities/meals if selected (standard mode)
@@ -719,6 +819,65 @@ class ItineraryGenerator(private val placesRepository: PlacesRepository) {
             durationMinutes = durationMinutes,
             distanceFromPreviousKm = distanceFromPrevious,
             transitEstimate = transitEstimate
+        )
+    }
+    
+    /**
+     * Create an ItineraryStop for an Event.
+     * Events use a temporary Place object to represent the venue.
+     */
+    private fun createEventStop(
+        event: Event,
+        distanceFromPrevious: Double = 0.0
+    ): ItineraryStop {
+        // Create a temporary Place for the event venue
+        val eventPlace = Place(
+            id = "event_${event.id}",
+            name = event.name,
+            type = PlaceType.MUSEUM, // Events are treated similarly to museums for display
+            lat = event.venueLatitude,
+            lng = event.venueLongitude,
+            rating = 5.0f, // Events don't have ratings in the same way
+            isOpen = true,
+            priceLevel = when {
+                event.priceMin == null -> 1
+                event.priceMin < 30 -> 1
+                event.priceMin < 60 -> 2
+                event.priceMin < 100 -> 3
+                else -> 4
+            },
+            estimatedCost = event.priceMin?.toInt() ?: 0,
+            openHour = 0,
+            closeHour = 24,
+            isOutdoor = false
+        )
+        
+        // Create calendar at event start time
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, event.startHour)
+            set(Calendar.MINUTE, event.startMinute)
+            set(Calendar.SECOND, 0)
+        }
+        
+        val startTime = timeFormat.format(calendar.time)
+        calendar.add(Calendar.MINUTE, event.durationMinutes)
+        val endTime = timeFormat.format(calendar.time)
+        
+        // Calculate transit estimates
+        val transitEstimate = if (distanceFromPrevious > 0) {
+            TransitHelper.estimateTransit(distanceFromPrevious)
+        } else {
+            null
+        }
+        
+        return ItineraryStop(
+            place = eventPlace,
+            startTime = startTime,
+            endTime = endTime,
+            durationMinutes = event.durationMinutes,
+            distanceFromPreviousKm = distanceFromPrevious,
+            transitEstimate = transitEstimate,
+            event = event  // Attach the original event for UI purposes
         )
     }
 
