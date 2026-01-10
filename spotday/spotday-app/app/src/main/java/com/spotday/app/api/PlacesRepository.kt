@@ -243,10 +243,17 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchRestaurants(cuisineTypes: List<String>): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for restaurants: $cuisineTypes")
+        Log.d("PlacesRepository", "Searching for restaurants: ${if (cuisineTypes.isEmpty()) "ALL" else cuisineTypes}")
         val allRestaurants = mutableListOf<AppPlace>()
+        
+        // If no cuisine types specified, include all cuisines
+        val effectiveCuisines = if (cuisineTypes.isEmpty()) {
+            listOf("italian", "mexican", "american", "asian", "seafood", "vegetarian")
+        } else {
+            cuisineTypes
+        }
 
-        if (cuisineTypes.contains("italian")) {
+        if (effectiveCuisines.contains("italian")) {
             allRestaurants.addAll(
                 listOf(
                     // North Beach (Italian Hub)
@@ -294,7 +301,7 @@ class PlacesRepository(private val context: Context) {
             )
         }
 
-        if (cuisineTypes.contains("mexican")) {
+        if (effectiveCuisines.contains("mexican")) {
             allRestaurants.addAll(
                 listOf(
                     // Mission District (Mexican Hub)
@@ -346,7 +353,7 @@ class PlacesRepository(private val context: Context) {
             )
         }
 
-        if (cuisineTypes.contains("american")) {
+        if (effectiveCuisines.contains("american")) {
             allRestaurants.addAll(
                 listOf(
                     // Downtown / Hayes Valley
@@ -395,7 +402,7 @@ class PlacesRepository(private val context: Context) {
             )
         }
 
-        if (cuisineTypes.contains("asian")) {
+        if (effectiveCuisines.contains("asian")) {
             allRestaurants.addAll(
                 listOf(
                     // Chinatown
@@ -439,7 +446,7 @@ class PlacesRepository(private val context: Context) {
             )
         }
 
-        if (cuisineTypes.contains("seafood")) {
+        if (effectiveCuisines.contains("seafood")) {
             allRestaurants.addAll(
                 listOf(
                     // Fisherman's Wharf
@@ -492,7 +499,7 @@ class PlacesRepository(private val context: Context) {
             )
         }
 
-        if (cuisineTypes.contains("vegetarian")) {
+        if (effectiveCuisines.contains("vegetarian")) {
             allRestaurants.addAll(
                 listOf(
                     // Marina / Fort Mason

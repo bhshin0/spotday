@@ -100,7 +100,14 @@ fun RestaurantSelectionScreen(
         Text(
             text = "What type of cuisine would you like?",
             style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(bottom = 24.dp)
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        Text(
+            text = "(Leave empty for all cuisines)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 16.dp)
         )
 
         // Italian
@@ -408,45 +415,40 @@ fun RestaurantSelectionScreen(
                     if (casualChecked) selectedServiceStyles.add("casual")
                     if (formalChecked) selectedServiceStyles.add("formal")
 
-                    // Allow proceeding with either food or nightlife selected (for bar crawl mode)
-                    if (selectedFoodTypes.isNotEmpty() || selectedNightlifeTypes.isNotEmpty()) {
-                        Log.d("RestaurantSelection", "Starting ItineraryDisplayActivity")
-                        Log.d("RestaurantSelection", "Time range: $startHour to $endHour, Budget: $$totalBudget, HungryNow: $isHungryNow, Spontaneous: $isSpontaneousMode")
-                        Log.d("RestaurantSelection", "Activity types: $activityTypes")
-                        Log.d("RestaurantSelection", "Food types: $selectedFoodTypes")
-                        Log.d("RestaurantSelection", "Service styles: ${if (selectedServiceStyles.isEmpty()) "ALL" else selectedServiceStyles}")
-                        Log.d("RestaurantSelection", "Nightlife types: $selectedNightlifeTypes")
-                        Log.d("RestaurantSelection", "Selected events: $selectedEventIds")
-                        if (startLatitude != null && startLongitude != null) {
-                            Log.d("RestaurantSelection", "Starting location: ($startLatitude, $startLongitude)")
-                        }
-                        
-                        val intent = Intent(context, ItineraryDisplayActivity::class.java).apply {
-                            putExtra("startHour", startHour)
-                            putExtra("endHour", endHour)
-                            putExtra("totalBudget", totalBudget)
-                            putExtra("isHungryNow", isHungryNow)
-                            putExtra("isSpontaneousMode", isSpontaneousMode)
-                            putExtra("activityTypes", activityTypes.toTypedArray())
-                            putExtra("foodTypes", selectedFoodTypes.toTypedArray())
-                            putExtra("serviceStyles", selectedServiceStyles.toTypedArray())
-                            putExtra("nightlifeTypes", selectedNightlifeTypes.toTypedArray())
-                            putExtra("selectedEventIds", selectedEventIds.toTypedArray())
-                            if (startLatitude != null) putExtra("startLatitude", startLatitude)
-                            if (startLongitude != null) putExtra("startLongitude", startLongitude)
-                        }
-                        context.startActivity(intent)
-                        (context as? ComponentActivity)?.finish()
-                    } else {
-                        Log.d("RestaurantSelection", "No food or nightlife preferences selected")
+                    // Empty selections = all (cuisines, styles)
+                    Log.d("RestaurantSelection", "Starting ItineraryDisplayActivity")
+                    Log.d("RestaurantSelection", "Time range: $startHour to $endHour, Budget: $$totalBudget, HungryNow: $isHungryNow, Spontaneous: $isSpontaneousMode")
+                    Log.d("RestaurantSelection", "Activity types: $activityTypes")
+                    Log.d("RestaurantSelection", "Food types: ${if (selectedFoodTypes.isEmpty()) "ALL" else selectedFoodTypes}")
+                    Log.d("RestaurantSelection", "Service styles: ${if (selectedServiceStyles.isEmpty()) "ALL" else selectedServiceStyles}")
+                    Log.d("RestaurantSelection", "Nightlife types: $selectedNightlifeTypes")
+                    Log.d("RestaurantSelection", "Selected events: $selectedEventIds")
+                    if (startLatitude != null && startLongitude != null) {
+                        Log.d("RestaurantSelection", "Starting location: ($startLatitude, $startLongitude)")
                     }
+                    
+                    val intent = Intent(context, ItineraryDisplayActivity::class.java).apply {
+                        putExtra("startHour", startHour)
+                        putExtra("endHour", endHour)
+                        putExtra("totalBudget", totalBudget)
+                        putExtra("isHungryNow", isHungryNow)
+                        putExtra("isSpontaneousMode", isSpontaneousMode)
+                        putExtra("activityTypes", activityTypes.toTypedArray())
+                        putExtra("foodTypes", selectedFoodTypes.toTypedArray())
+                        putExtra("serviceStyles", selectedServiceStyles.toTypedArray())
+                        putExtra("nightlifeTypes", selectedNightlifeTypes.toTypedArray())
+                        putExtra("selectedEventIds", selectedEventIds.toTypedArray())
+                        if (startLatitude != null) putExtra("startLatitude", startLatitude)
+                        if (startLongitude != null) putExtra("startLongitude", startLongitude)
+                    }
+                    context.startActivity(intent)
+                    (context as? ComponentActivity)?.finish()
                 } catch (e: Exception) {
                     Log.e("RestaurantSelection", "Error starting activity", e)
                 }
             },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = italianChecked || mexicanChecked || americanChecked || asianChecked || seafoodChecked || vegetarianChecked ||
-                      barsChecked || cocktailBarsChecked || clubsChecked || liveMusicChecked || diveBarsChecked || rooftopBarsChecked
+            modifier = Modifier.fillMaxWidth()
+            // Always enabled - empty cuisine = all cuisines, empty style = all styles
         ) {
             Text("Generate Itinerary")
         }
