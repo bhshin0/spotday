@@ -27,10 +27,44 @@ class PlacesRepository(private val context: Context) {
 
     // San Francisco center coordinates
     private val SF_CENTER = LatLng(37.7749, -122.4194)
+    
+    /**
+     * Apply sensible default operating hours and outdoor flag based on PlaceType.
+     * Museums: 10 AM - 5 PM (indoor)
+     * Parks: 6 AM - 10 PM (outdoor)
+     * Restaurants: 7 AM - 10 PM (indoor) - varies for breakfast vs dinner spots
+     * Nightlife: 4 PM - 2 AM (indoor)
+     * Shopping: 10 AM - 9 PM (indoor)
+     * Waterfront: 6 AM - 10 PM (outdoor)
+     * Historic Sites: 9 AM - 6 PM (varies outdoor/indoor)
+     */
+    private fun AppPlace.withTypeDefaults(): AppPlace {
+        return when (this.type) {
+            PlaceType.MUSEUM -> this.copy(openHour = 10, closeHour = 17, isOutdoor = false)
+            PlaceType.PARK -> this.copy(openHour = 6, closeHour = 22, isOutdoor = true)
+            PlaceType.RESTAURANT -> this.copy(openHour = 7, closeHour = 22, isOutdoor = false)
+            PlaceType.NIGHTLIFE -> this.copy(openHour = 16, closeHour = 2, isOutdoor = false)
+            PlaceType.SHOPPING -> this.copy(openHour = 10, closeHour = 21, isOutdoor = false)
+            PlaceType.WATERFRONT -> this.copy(openHour = 6, closeHour = 22, isOutdoor = true)
+            PlaceType.HISTORIC_SITE -> {
+                // Outdoor historic sites (trails, bridges, parks)
+                val outdoorSites = listOf("golden_gate_bridge", "batteries_to_bluffs", 
+                    "telegraph_hill_stairs", "sutro_baths", "dutch_windmill", "presidio",
+                    "fort_point", "pet_cemetery", "huntington_park", "harvey_milk_plaza")
+                if (this.id in outdoorSites) {
+                    this.copy(openHour = 6, closeHour = 22, isOutdoor = true)
+                } else {
+                    this.copy(openHour = 9, closeHour = 18, isOutdoor = false)
+                }
+            }
+        }
+    }
+    
+    private fun List<AppPlace>.applyTypeDefaults(): List<AppPlace> = map { it.withTypeDefaults() }
 
     suspend fun searchMuseums(): List<AppPlace> {
         Log.d("PlacesRepository", "Searching for museums in SF")
-        return listOf(
+        return listOf<AppPlace>(
             // North SF - Fisherman's Wharf / Marina
             AppPlace("maritime_museum", "Maritime Museum", PlaceType.MUSEUM, 37.8088, -122.4229, 4.5f, true, 2, 15),
             AppPlace("wax_museum", "Wax Museum at Fisherman's Wharf", PlaceType.MUSEUM, 37.8098, -122.4166, 4.2f, true, 2, 25),
@@ -91,12 +125,12 @@ class PlacesRepository(private val context: Context) {
             AppPlace("luggage_store", "Luggage Store Gallery", PlaceType.MUSEUM, 37.7851, -122.4080, 4.2f, true, 1, 0),
             AppPlace("catharine_clark", "Catharine Clark Gallery", PlaceType.MUSEUM, 37.7694, -122.4020, 4.4f, true, 1, 0),
             AppPlace("fraenkel_gallery", "Fraenkel Gallery", PlaceType.MUSEUM, 37.7887, -122.4018, 4.5f, true, 1, 0)
-        )
+        ).applyTypeDefaults()
     }
 
     suspend fun searchParks(): List<AppPlace> {
         Log.d("PlacesRepository", "Searching for parks in SF")
-        return listOf(
+        return listOf<AppPlace>(
             // Golden Gate Park Area
             AppPlace("ggpark", "Golden Gate Park", PlaceType.PARK, 37.7694, -122.4862, 4.8f, true, 0, 0),
             AppPlace("stow_lake", "Stow Lake", PlaceType.PARK, 37.7694, -122.4780, 4.7f, true, 0, 0),
@@ -154,7 +188,7 @@ class PlacesRepository(private val context: Context) {
             AppPlace("lake_merced", "Lake Merced Park", PlaceType.PARK, 37.7167, -122.4871, 4.6f, true, 0, 0),
             AppPlace("stern_grove", "Stern Grove", PlaceType.PARK, 37.7290, -122.4743, 4.7f, true, 0, 0),
             AppPlace("mount_sutro", "Mount Sutro Open Space", PlaceType.PARK, 37.7538, -122.4518, 4.5f, true, 0, 0)
-        )
+        ).applyTypeDefaults()
     }
 
     suspend fun searchRestaurants(cuisineTypes: List<String>): List<AppPlace> {
@@ -465,12 +499,12 @@ class PlacesRepository(private val context: Context) {
             )
         }
 
-        return allRestaurants
+        return allRestaurants.applyTypeDefaults()
     }
 
     suspend fun searchWaterfront(): List<AppPlace> {
         Log.d("PlacesRepository", "Searching for waterfront locations in SF")
-        return listOf(
+        return listOf<AppPlace>(
             // Northern Waterfront
             AppPlace("fishermans_wharf", "Fisherman's Wharf", PlaceType.WATERFRONT, 37.8080, -122.4177, 4.4f, true, 0, 0),
             AppPlace("pier39", "Pier 39", PlaceType.WATERFRONT, 37.8087, -122.4098, 4.3f, true, 0, 0),
@@ -505,12 +539,12 @@ class PlacesRepository(private val context: Context) {
             AppPlace("cliff_house_view", "Cliff House Viewpoint", PlaceType.WATERFRONT, 37.7783, -122.5139, 4.5f, true, 0, 0),
             AppPlace("ocean_beach_north", "Ocean Beach North", PlaceType.WATERFRONT, 37.7651, -122.5104, 4.6f, true, 0, 0),
             AppPlace("ocean_beach_south", "Ocean Beach South", PlaceType.WATERFRONT, 37.7350, -122.5110, 4.5f, true, 0, 0)
-        )
+        ).applyTypeDefaults()
     }
 
     suspend fun searchHistoricSites(): List<AppPlace> {
         Log.d("PlacesRepository", "Searching for historic sites in SF")
-        return listOf(
+        return listOf<AppPlace>(
             // Mission District
             AppPlace("mission_dolores", "Mission Dolores", PlaceType.HISTORIC_SITE, 37.7637, -122.4268, 4.4f, true, 1, 10),
             AppPlace("mission_dolores_park", "Mission Dolores Basilica", PlaceType.HISTORIC_SITE, 37.7639, -122.4267, 4.5f, true, 1, 5),
@@ -562,12 +596,12 @@ class PlacesRepository(private val context: Context) {
             AppPlace("golden_gate_bridge", "Golden Gate Bridge", PlaceType.HISTORIC_SITE, 37.8199, -122.4783, 4.8f, true, 0, 0),
             AppPlace("alcatraz", "Alcatraz Island", PlaceType.HISTORIC_SITE, 37.8270, -122.4230, 4.7f, true, 3, 40),
             AppPlace("angel_island", "Angel Island State Park", PlaceType.HISTORIC_SITE, 37.8619, -122.4326, 4.7f, true, 2, 20)
-        )
+        ).applyTypeDefaults()
     }
 
     suspend fun searchShopping(): List<AppPlace> {
         Log.d("PlacesRepository", "Searching for shopping areas in SF")
-        return listOf(
+        return listOf<AppPlace>(
             // Downtown / Union Square
             AppPlace("union_square", "Union Square", PlaceType.SHOPPING, 37.7879, -122.4075, 4.3f, true, 0, 0),
             AppPlace("westfield", "Westfield San Francisco Centre", PlaceType.SHOPPING, 37.7845, -122.4062, 4.3f, true, 0, 0),
@@ -616,6 +650,127 @@ class PlacesRepository(private val context: Context) {
             AppPlace("grant_avenue", "Grant Avenue Chinatown", PlaceType.SHOPPING, 37.7945, -122.4072, 4.2f, true, 0, 0),
             // Noe Valley
             AppPlace("24th_street_noe", "24th Street Noe Valley", PlaceType.SHOPPING, 37.7510, -122.4320, 4.5f, true, 0, 0)
-        )
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchNightlife(nightlifeTypes: List<String>): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for nightlife in SF: $nightlifeTypes")
+        val allNightlife = mutableListOf<AppPlace>()
+        
+        if (nightlifeTypes.contains("bars")) {
+            allNightlife.addAll(listOf(
+                // Mission
+                AppPlace("zeitgeist", "Zeitgeist", PlaceType.NIGHTLIFE, 37.7658, -122.4209, 4.5f, true, 2, 25),
+                AppPlace("the_page", "The Page", PlaceType.NIGHTLIFE, 37.7692, -122.4340, 4.4f, true, 2, 20),
+                AppPlace("trick_dog", "Trick Dog", PlaceType.NIGHTLIFE, 37.7537, -122.4175, 4.6f, true, 2, 30),
+                AppPlace("el_rio", "El Rio", PlaceType.NIGHTLIFE, 37.7480, -122.4096, 4.5f, true, 2, 25),
+                AppPlace("lone_palm", "The Lone Palm", PlaceType.NIGHTLIFE, 37.7434, -122.4262, 4.4f, true, 2, 20),
+                // SoMa
+                AppPlace("mr_tipples", "Mr. Tipple's Recording Studio", PlaceType.NIGHTLIFE, 37.7747, -122.4100, 4.5f, true, 2, 25),
+                AppPlace("city_beer", "City Beer Store", PlaceType.NIGHTLIFE, 37.7805, -122.4100, 4.4f, true, 2, 20),
+                AppPlace("the_view", "The View Lounge", PlaceType.NIGHTLIFE, 37.7855, -122.4088, 4.6f, true, 3, 35),
+                // Castro
+                AppPlace("the_castro", "The Castro Bar", PlaceType.NIGHTLIFE, 37.7615, -122.4350, 4.3f, true, 2, 25),
+                AppPlace("lookout", "The Lookout", PlaceType.NIGHTLIFE, 37.7620, -122.4355, 4.4f, true, 2, 20),
+                // Hayes Valley
+                AppPlace("smugglers", "Smuggler's Cove Lite", PlaceType.NIGHTLIFE, 37.7763, -122.4235, 4.5f, true, 2, 30)
+            ))
+        }
+        
+        if (nightlifeTypes.contains("cocktail_bars")) {
+            allNightlife.addAll(listOf(
+                // Downtown / Tenderloin
+                AppPlace("bourbon_branch", "Bourbon & Branch", PlaceType.NIGHTLIFE, 37.7835, -122.4184, 4.7f, true, 3, 40),
+                AppPlace("smugglers_cove", "Smuggler's Cove", PlaceType.NIGHTLIFE, 37.7763, -122.4235, 4.8f, true, 3, 45),
+                AppPlace("rickhouse", "Rickhouse", PlaceType.NIGHTLIFE, 37.7918, -122.3984, 4.6f, true, 3, 40),
+                AppPlace("alchemist", "The Alchemist Bar", PlaceType.NIGHTLIFE, 37.7716, -122.4210, 4.5f, true, 3, 35),
+                AppPlace("blackbird", "Blackbird Bar", PlaceType.NIGHTLIFE, 37.7831, -122.4126, 4.6f, true, 3, 40),
+                // SoMa
+                AppPlace("local_edition", "Local Edition", PlaceType.NIGHTLIFE, 37.7881, -122.4030, 4.7f, true, 3, 45),
+                AppPlace("whitechapel", "Whitechapel", PlaceType.NIGHTLIFE, 37.7795, -122.4118, 4.6f, true, 3, 40),
+                AppPlace("holy_water", "Holy Water", PlaceType.NIGHTLIFE, 37.7808, -122.4096, 4.5f, true, 3, 35),
+                // North Beach
+                AppPlace("comstock", "Comstock Saloon", PlaceType.NIGHTLIFE, 37.7983, -122.4078, 4.6f, true, 3, 40),
+                AppPlace("tosca", "Tosca Cafe Bar", PlaceType.NIGHTLIFE, 37.7981, -122.4082, 4.5f, true, 3, 35),
+                // Mission
+                AppPlace("abv", "ABV", PlaceType.NIGHTLIFE, 37.7605, -122.4175, 4.7f, true, 3, 40),
+                AppPlace("bergerac", "Bergerac", PlaceType.NIGHTLIFE, 37.7680, -122.4240, 4.5f, true, 3, 35)
+            ))
+        }
+        
+        if (nightlifeTypes.contains("clubs")) {
+            allNightlife.addAll(listOf(
+                // SoMa
+                AppPlace("1015_folsom", "1015 Folsom", PlaceType.NIGHTLIFE, 37.7755, -122.4100, 4.3f, true, 3, 40),
+                AppPlace("the_grand", "The Grand Nightclub", PlaceType.NIGHTLIFE, 37.7853, -122.4066, 4.4f, true, 3, 50),
+                AppPlace("temple_sf", "Temple Nightclub", PlaceType.NIGHTLIFE, 37.7850, -122.4070, 4.5f, true, 3, 45),
+                AppPlace("audio_sf", "Audio Discotech", PlaceType.NIGHTLIFE, 37.7835, -122.4095, 4.3f, true, 3, 40),
+                AppPlace("monarch", "Monarch", PlaceType.NIGHTLIFE, 37.7790, -122.4132, 4.4f, true, 3, 35),
+                AppPlace("mezzanine", "The Mezzanine", PlaceType.NIGHTLIFE, 37.7802, -122.4120, 4.5f, true, 3, 40),
+                // Castro
+                AppPlace("lookout_club", "Lookout Dance Club", PlaceType.NIGHTLIFE, 37.7618, -122.4352, 4.2f, true, 3, 35),
+                // Mission
+                AppPlace("elbo_room", "Elbo Room", PlaceType.NIGHTLIFE, 37.7595, -122.4220, 4.3f, true, 2, 30)
+            ))
+        }
+        
+        if (nightlifeTypes.contains("live_music")) {
+            allNightlife.addAll(listOf(
+                // Fillmore / Western Addition
+                AppPlace("fillmore", "The Fillmore", PlaceType.NIGHTLIFE, 37.7832, -122.4333, 4.8f, true, 3, 50),
+                AppPlace("boom_boom", "Boom Boom Room", PlaceType.NIGHTLIFE, 37.7834, -122.4337, 4.6f, true, 2, 35),
+                // SoMa / Mission Bay
+                AppPlace("great_american", "Great American Music Hall", PlaceType.NIGHTLIFE, 37.7839, -122.4209, 4.7f, true, 3, 45),
+                AppPlace("the_independent", "The Independent", PlaceType.NIGHTLIFE, 37.7839, -122.4335, 4.6f, true, 3, 40),
+                AppPlace("slims", "Slim's", PlaceType.NIGHTLIFE, 37.7808, -122.4120, 4.5f, true, 3, 35),
+                // Mission
+                AppPlace("bottom_hill", "Bottom of the Hill", PlaceType.NIGHTLIFE, 37.7512, -122.3983, 4.6f, true, 2, 30),
+                AppPlace("chapel", "The Chapel", PlaceType.NIGHTLIFE, 37.7535, -122.4220, 4.7f, true, 2, 35),
+                AppPlace("make_out_room", "Make-Out Room", PlaceType.NIGHTLIFE, 37.7555, -122.4210, 4.4f, true, 2, 25),
+                // North Beach
+                AppPlace("biscuits_blues", "Biscuits and Blues", PlaceType.NIGHTLIFE, 37.7897, -122.4015, 4.5f, true, 3, 40),
+                // Haight
+                AppPlace("independent_haight", "The Independent Haight", PlaceType.NIGHTLIFE, 37.7695, -122.4485, 4.4f, true, 2, 30)
+            ))
+        }
+        
+        if (nightlifeTypes.contains("dive_bars")) {
+            allNightlife.addAll(listOf(
+                // North Beach
+                AppPlace("vesuvio", "Vesuvio Cafe", PlaceType.NIGHTLIFE, 37.7978, -122.4079, 4.6f, true, 2, 20),
+                AppPlace("specs", "Spec's Twelve Adler Museum Cafe", PlaceType.NIGHTLIFE, 37.7981, -122.4064, 4.5f, true, 2, 15),
+                AppPlace("gino_carlo", "Gino & Carlo", PlaceType.NIGHTLIFE, 37.7990, -122.4083, 4.4f, true, 2, 20),
+                AppPlace("Li Po", "Li Po Cocktail Lounge", PlaceType.NIGHTLIFE, 37.7960, -122.4075, 4.3f, true, 2, 15),
+                // Tenderloin
+                AppPlace("phonebooth", "The Phonebooth", PlaceType.NIGHTLIFE, 37.7850, -122.4120, 4.2f, true, 2, 20),
+                AppPlace("ha_ra", "Ha-Ra Club", PlaceType.NIGHTLIFE, 37.7845, -122.4130, 4.1f, true, 2, 15),
+                // Mission
+                AppPlace("wild_side", "Wild Side West", PlaceType.NIGHTLIFE, 37.7425, -122.4285, 4.5f, true, 2, 20),
+                AppPlace("latin_american", "Latin American Club", PlaceType.NIGHTLIFE, 37.7575, -122.4235, 4.4f, true, 2, 15),
+                // SoMa
+                AppPlace("zeitgeist_soma", "Zeitgeist (SoMa location)", PlaceType.NIGHTLIFE, 37.7660, -122.4210, 4.4f, true, 2, 25),
+                // Sunset
+                AppPlace("trad_sam", "Trad'r Sam", PlaceType.NIGHTLIFE, 37.7705, -122.4685, 4.3f, true, 2, 20)
+            ))
+        }
+        
+        if (nightlifeTypes.contains("rooftop_bars")) {
+            allNightlife.addAll(listOf(
+                // Downtown
+                AppPlace("charmaines", "Charmaine's Rooftop Bar", PlaceType.NIGHTLIFE, 37.7855, -122.4066, 4.6f, true, 3, 45),
+                AppPlace("cityscape", "Cityscape Lounge", PlaceType.NIGHTLIFE, 37.7860, -122.4070, 4.5f, true, 3, 40),
+                AppPlace("top_mark", "Top of the Mark", PlaceType.NIGHTLIFE, 37.7918, -122.4102, 4.7f, true, 3, 50),
+                // Mission
+                AppPlace("el_techo", "El Techo", PlaceType.NIGHTLIFE, 37.7616, -122.4245, 4.6f, true, 3, 35),
+                AppPlace("rooftop_25", "Rooftop 25", PlaceType.NIGHTLIFE, 37.7840, -122.4110, 4.4f, true, 3, 40),
+                // SoMa
+                AppPlace("jones_sf", "Jones SF", PlaceType.NIGHTLIFE, 37.7835, -122.4080, 4.5f, true, 3, 40),
+                // Marina
+                AppPlace("pershing_hall", "Pershing Hall Rooftop", PlaceType.NIGHTLIFE, 37.8010, -122.4365, 4.3f, true, 3, 35)
+            ))
+        }
+        
+        Log.d("PlacesRepository", "Found ${allNightlife.size} nightlife venues")
+        return allNightlife.applyTypeDefaults()
     }
 }

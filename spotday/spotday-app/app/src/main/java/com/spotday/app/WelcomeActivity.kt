@@ -33,7 +33,9 @@ class WelcomeActivity : ComponentActivity() {
 @Composable
 fun WelcomeScreen() {
     val context = LocalContext.current
+    var isSpontaneousMode by remember { mutableStateOf(false) }
     var timeRange by remember { mutableStateOf(9f..17f) } // 9 AM to 5 PM default
+    var durationHours by remember { mutableStateOf(4f) } // For spontaneous mode
     var budget by remember { mutableStateOf(100) }
     var isHungryNow by remember { mutableStateOf(false) }
 
@@ -57,25 +59,73 @@ fun WelcomeScreen() {
         
         Spacer(modifier = Modifier.height(48.dp))
         
+        // Mode selector
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Spontaneous (Start Now)",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Switch(
+                checked = isSpontaneousMode,
+                onCheckedChange = { isSpontaneousMode = it }
+            )
+        }
+        
         Text(
-            text = "What time will you be out?",
-            style = MaterialTheme.typography.titleMedium
+            text = if (isSpontaneousMode) "Starts immediately from your location" else "Plan for a specific time",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
         )
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(32.dp))
         
-        RangeSlider(
-            value = timeRange,
-            onValueChange = { timeRange = it },
-            valueRange = 6f..23f, // 6 AM to 11 PM
-            steps = 16 // Every hour
-        )
-        
-        Text(
-            text = "${formatTime(timeRange.start.toInt())} - ${formatTime(timeRange.endInclusive.toInt())}",
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(top = 8.dp)
-        )
+        // Conditional time selection based on mode
+        if (isSpontaneousMode) {
+            Text(
+                text = "How long from now?",
+                style = MaterialTheme.typography.titleMedium
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Slider(
+                value = durationHours,
+                onValueChange = { durationHours = it },
+                valueRange = 1f..8f,
+                steps = 6
+            )
+            
+            Text(
+                text = "${durationHours.toInt()} hours",
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        } else {
+            Text(
+                text = "What time will you be out?",
+                style = MaterialTheme.typography.titleMedium
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            RangeSlider(
+                value = timeRange,
+                onValueChange = { timeRange = it },
+                valueRange = 6f..24f, // 6 AM to Midnight
+                steps = 17 // Every hour
+            )
+            
+            Text(
+                text = "${formatTime(timeRange.start.toInt())} - ${formatTime(timeRange.endInclusive.toInt())}",
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
         
         Spacer(modifier = Modifier.height(32.dp))
         
@@ -128,15 +178,38 @@ fun WelcomeScreen() {
         Button(
             onClick = {
                 try {
-                    val startHour = timeRange.start.toInt()
-                    val endHour = timeRange.endInclusive.toInt()
+                    // Calculate start and end hours based on mode
+                    val (startHour, endHour) = if (isSpontaneousMode) {
+                        val currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                        val spontaneousStart = currentHour
+                        val spontaneousEnd = (currentHour + durationHours.toInt()).coerceAtMost(23)
+                        Pair(spontaneousStart, spontaneousEnd)
+                    } else {
+                        Pair(timeRange.start.toInt(), timeRange.endInclusive.toInt())
+                    }
+                    
+                    // Get mocked location for spontaneous mode
+                    val (startLat, startLng) = if (isSpontaneousMode) {
+                        com.spotday.app.util.LocationHelper.getRandomSFLocation()
+                    } else {
+                        Pair(0.0, 0.0) // Will be ignored in planned mode
+                    }
+                    
                     val intent = Intent(context, ActivityPreferencesActivity::class.java).apply {
                         putExtra("startHour", startHour)
                         putExtra("endHour", endHour)
                         putExtra("totalBudget", budget)
                         putExtra("isHungryNow", isHungryNow)
+                        putExtra("isSpontaneousMode", isSpontaneousMode)
+                        if (isSpontaneousMode) {
+                            putExtra("startLatitude", startLat)
+                            putExtra("startLongitude", startLng)
+                        }
                     }
-                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity from $startHour to $endHour with $$budget budget, hungryNow=$isHungryNow")
+                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity from $startHour to $endHour with $$budget budget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode")
+                    if (isSpontaneousMode) {
+                        Log.d("WelcomeActivity", "Spontaneous mode starting location: ($startLat, $startLng)")
+                    }
                     context.startActivity(intent)
                     (context as? ComponentActivity)?.finish()
                 } catch (e: Exception) {
@@ -152,9 +225,11 @@ fun WelcomeScreen() {
 
 // Helper function to format hour as time (e.g., 9 -> "9:00 AM", 14 -> "2:00 PM")
 fun formatTime(hour: Int): String {
+    // Handle midnight (24 or 0) specially
+    if (hour == 24 || hour == 0) return "12:00 AM"
+    
     val period = if (hour < 12) "AM" else "PM"
     val displayHour = when {
-        hour == 0 -> 12
         hour > 12 -> hour - 12
         else -> hour
     }

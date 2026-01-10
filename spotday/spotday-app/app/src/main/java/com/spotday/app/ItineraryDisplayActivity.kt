@@ -29,8 +29,11 @@ import com.google.maps.android.compose.*
 import com.spotday.app.api.PlacesRepository
 import com.spotday.app.model.ItineraryStop
 import com.spotday.app.model.PlaceType
+import com.spotday.app.model.TransitEstimate
 import com.spotday.app.service.ItineraryGenerator
 import com.spotday.app.ui.theme.SpotDayTheme
+import com.spotday.app.util.TransitHelper
+import com.spotday.app.util.WeatherHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,10 +49,17 @@ class ItineraryDisplayActivity : ComponentActivity() {
         val endHour = intent.getIntExtra("endHour", 17)
         val totalBudget = intent.getIntExtra("totalBudget", 100)
         val isHungryNow = intent.getBooleanExtra("isHungryNow", false)
+        val isSpontaneousMode = intent.getBooleanExtra("isSpontaneousMode", false)
         val activityTypes = intent.getStringArrayExtra("activityTypes")?.toList() ?: emptyList()
         val foodTypes = intent.getStringArrayExtra("foodTypes")?.toList() ?: emptyList()
+        val nightlifeTypes = intent.getStringArrayExtra("nightlifeTypes")?.toList() ?: emptyList()
+        val startLat = intent.getDoubleExtra("startLatitude", 0.0).takeIf { it != 0.0 }
+        val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
         
-        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, activities=$activityTypes, food=$foodTypes")
+        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode, activities=$activityTypes, food=$foodTypes, nightlife=$nightlifeTypes")
+        if (startLat != null && startLng != null) {
+            Log.d("ItineraryDisplay", "Starting location: ($startLat, $startLng)")
+        }
         
         setContent {
             SpotDayTheme {
@@ -62,8 +72,12 @@ class ItineraryDisplayActivity : ComponentActivity() {
                         endHour = endHour,
                         totalBudget = totalBudget,
                         isHungryNow = isHungryNow,
+                        isSpontaneousMode = isSpontaneousMode,
+                        startLatitude = startLat,
+                        startLongitude = startLng,
                         activityTypes = activityTypes,
-                        foodTypes = foodTypes
+                        foodTypes = foodTypes,
+                        nightlifeTypes = nightlifeTypes
                     )
                 }
             }
@@ -76,8 +90,12 @@ class ItineraryViewModel(
     private val endHour: Int,
     private val totalBudget: Int,
     private val isHungryNow: Boolean,
+    private val isSpontaneousMode: Boolean,
+    private val startLatitude: Double?,
+    private val startLongitude: Double?,
     private val activityTypes: List<String>,
     private val foodTypes: List<String>,
+    private val nightlifeTypes: List<String>,
     placesRepository: PlacesRepository
 ) : ViewModel() {
     
@@ -92,22 +110,33 @@ class ItineraryViewModel(
     var error by mutableStateOf<String?>(null)
         private set
     
+    // Weather state - using regular vars to avoid Compose snapshot issues in coroutines
+    // These will be passed explicitly to composables
+    private var _weatherForecast = WeatherHelper.getMockForecast()
+    val weatherForecast: WeatherHelper.WeatherForecast get() = _weatherForecast
+    
+    private var _avoidOutdoor = false
+    val avoidOutdoor: Boolean get() = _avoidOutdoor
+    
     init {
-        generateItinerary()
+        _avoidOutdoor = WeatherHelper.shouldAvoidOutdoor(_weatherForecast)
+        Log.d("ItineraryViewModel", "Weather: ${_weatherForecast.description}, avoidOutdoor: $_avoidOutdoor")
+        generateItinerary(_avoidOutdoor)
     }
     
     fun regenerateItinerary() {
         Log.d("ItineraryViewModel", "Regenerating itinerary...")
-        generateItinerary()
+        _weatherForecast = WeatherHelper.getMockForecast()
+        _avoidOutdoor = WeatherHelper.shouldAvoidOutdoor(_weatherForecast)
+        generateItinerary(_avoidOutdoor)
     }
     
-    private fun generateItinerary() {
+    private fun generateItinerary(avoidOutdoorParam: Boolean) {
         viewModelScope.launch {
             try {
                 isLoading = true
                 error = null
                 Log.d("ItineraryViewModel", "Generating itinerary...")
-                // Run on background thread to avoid ANR
                 itinerary = withContext(Dispatchers.IO) {
                     itineraryGenerator.generateItinerary(
                         startHour = startHour,
@@ -115,7 +144,12 @@ class ItineraryViewModel(
                         totalBudget = totalBudget,
                         activityTypes = activityTypes,
                         foodTypes = foodTypes,
-                        isHungryNow = isHungryNow
+                        isHungryNow = isHungryNow,
+                        isSpontaneousMode = isSpontaneousMode,
+                        userStartLat = startLatitude,
+                        userStartLng = startLongitude,
+                        nightlifeTypes = nightlifeTypes,
+                        avoidOutdoor = avoidOutdoorParam
                     )
                 }
                 Log.d("ItineraryViewModel", "Itinerary generated with ${itinerary.size} stops")
@@ -135,8 +169,12 @@ fun ItineraryDisplayScreen(
     endHour: Int,
     totalBudget: Int,
     isHungryNow: Boolean,
+    isSpontaneousMode: Boolean = false,
+    startLatitude: Double? = null,
+    startLongitude: Double? = null,
     activityTypes: List<String>,
-    foodTypes: List<String>
+    foodTypes: List<String>,
+    nightlifeTypes: List<String> = emptyList()
 ) {
     val context = LocalContext.current
     val placesRepository = remember { PlacesRepository(context) }
@@ -145,7 +183,19 @@ fun ItineraryDisplayScreen(
         factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return ItineraryViewModel(startHour, endHour, totalBudget, isHungryNow, activityTypes, foodTypes, placesRepository) as T
+                return ItineraryViewModel(
+                    startHour, 
+                    endHour, 
+                    totalBudget, 
+                    isHungryNow, 
+                    isSpontaneousMode,
+                    startLatitude,
+                    startLongitude,
+                    activityTypes, 
+                    foodTypes,
+                    nightlifeTypes,
+                    placesRepository
+                ) as T
             }
         }
     )
@@ -192,6 +242,8 @@ fun ItineraryDisplayScreen(
                 itinerary = viewModel.itinerary,
                 totalBudget = totalBudget,
                 hasLocationPermission = hasLocationPermission,
+                weatherForecast = viewModel.weatherForecast,
+                avoidOutdoor = viewModel.avoidOutdoor,
                 onRegenerate = { viewModel.regenerateItinerary() }
             )
         }
@@ -203,6 +255,8 @@ fun ItineraryContent(
     itinerary: List<ItineraryStop>,
     totalBudget: Int,
     hasLocationPermission: Boolean,
+    weatherForecast: WeatherHelper.WeatherForecast,
+    avoidOutdoor: Boolean,
     onRegenerate: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -225,6 +279,8 @@ fun ItineraryContent(
             ItineraryTimeline(
                 itinerary = itinerary,
                 totalBudget = totalBudget,
+                weatherForecast = weatherForecast,
+                avoidOutdoor = avoidOutdoor,
                 onRegenerate = onRegenerate
             )
         }
@@ -294,6 +350,8 @@ fun ItineraryMap(itinerary: List<ItineraryStop>) {
 fun ItineraryTimeline(
     itinerary: List<ItineraryStop>,
     totalBudget: Int,
+    weatherForecast: WeatherHelper.WeatherForecast,
+    avoidOutdoor: Boolean,
     onRegenerate: () -> Unit
 ) {
     val scrollState = rememberScrollState()
@@ -318,6 +376,14 @@ fun ItineraryTimeline(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
+            // Weather banner
+            WeatherBanner(
+                forecast = weatherForecast,
+                avoidOutdoor = avoidOutdoor
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
             // Budget summary card
             BudgetSummaryCard(
                 budget = totalBudget,
@@ -331,7 +397,8 @@ fun ItineraryTimeline(
                 
                 // Add travel time indicator between stops
                 if (index < itinerary.size - 1) {
-                    TravelTimeIndicator(distanceKm = itinerary[index + 1].distanceFromPreviousKm)
+                    val nextStop = itinerary[index + 1]
+                    TravelTimeIndicator(transitEstimate = nextStop.transitEstimate)
                 }
             }
             
@@ -423,23 +490,45 @@ fun BudgetSummaryCard(budget: Int, estimatedCost: Int) {
 
 @Composable
 fun ItineraryStopCard(stop: ItineraryStop) {
+    val isNightlife = stop.place.type == PlaceType.NIGHTLIFE
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
+        colors = if (isNightlife) {
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer
+            )
+        } else {
+            CardDefaults.cardColors()
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            Text(
-                text = stop.place.name,
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isNightlife) {
+                    Text(
+                        text = "🍸 ",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                }
+                Text(
+                    text = stop.place.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = if (isNightlife) 
+                        MaterialTheme.colorScheme.onTertiaryContainer
+                    else 
+                        MaterialTheme.colorScheme.primary
+                )
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
             
@@ -461,9 +550,13 @@ fun ItineraryStopCard(stop: ItineraryStop) {
                         PlaceType.WATERFRONT -> "Waterfront"
                         PlaceType.HISTORIC_SITE -> "Historic Site"
                         PlaceType.SHOPPING -> "Shopping"
+                        PlaceType.NIGHTLIFE -> "Nightlife"
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary
+                    color = if (isNightlife)
+                        MaterialTheme.colorScheme.tertiary
+                    else
+                        MaterialTheme.colorScheme.secondary
                 )
             }
             
@@ -502,39 +595,79 @@ fun ItineraryStopCard(stop: ItineraryStop) {
 }
 
 @Composable
-fun TravelTimeIndicator(distanceKm: Double) {
+fun WeatherBanner(
+    forecast: WeatherHelper.WeatherForecast,
+    avoidOutdoor: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (avoidOutdoor) 
+                MaterialTheme.colorScheme.errorContainer 
+            else 
+                MaterialTheme.colorScheme.primaryContainer
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = WeatherHelper.getWeatherEmoji(forecast.condition),
+                style = MaterialTheme.typography.headlineMedium
+            )
+            
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${forecast.temperatureF}°F - ${forecast.description}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (avoidOutdoor)
+                        MaterialTheme.colorScheme.onErrorContainer
+                    else
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                if (avoidOutdoor) {
+                    Text(
+                        text = WeatherHelper.getWeatherAdvice(forecast),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TravelTimeIndicator(transitEstimate: TransitEstimate?) {
+    if (transitEstimate == null) return
+    
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp, horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
     ) {
-        Divider(
+        HorizontalDivider(
             modifier = Modifier.weight(1f),
             color = MaterialTheme.colorScheme.outlineVariant
         )
+        
         Text(
-            text = "  🚗 ${formatDistance(distanceKm)} • ~${estimateTravelTime(distanceKm)} min  ",
-            style = MaterialTheme.typography.bodySmall,
+            text = "  ${TransitHelper.formatDistance(transitEstimate.distanceKm)} • 🚶${transitEstimate.walkingMinutes}m 🚇${transitEstimate.transitMinutes}m 🚗${transitEstimate.drivingMinutes}m  ",
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Divider(
+        
+        HorizontalDivider(
             modifier = Modifier.weight(1f),
             color = MaterialTheme.colorScheme.outlineVariant
         )
     }
-}
-
-private fun formatDistance(km: Double): String {
-    return if (km < 1.0) {
-        "${(km * 1000).toInt()}m"
-    } else {
-        "${"%.1f".format(km)}km"
-    }
-}
-
-private fun estimateTravelTime(km: Double): Int {
-    // Assume 20 km/h average in SF (0.33 km/min)
-    // Time = distance / speed = km / (km/min) = minutes
-    return maxOf(5, (km / 0.33).toInt())
 } 

@@ -21,6 +21,9 @@ class ActivityPreferencesActivity : ComponentActivity() {
         val endHour = intent.getIntExtra("endHour", 17)
         val totalBudget = intent.getIntExtra("totalBudget", 100)
         val isHungryNow = intent.getBooleanExtra("isHungryNow", false)
+        val isSpontaneousMode = intent.getBooleanExtra("isSpontaneousMode", false)
+        val startLat = intent.getDoubleExtra("startLatitude", 0.0).takeIf { it != 0.0 }
+        val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
         
         setContent {
             SpotDayTheme {
@@ -32,7 +35,10 @@ class ActivityPreferencesActivity : ComponentActivity() {
                         startHour = startHour, 
                         endHour = endHour, 
                         totalBudget = totalBudget,
-                        isHungryNow = isHungryNow
+                        isHungryNow = isHungryNow,
+                        isSpontaneousMode = isSpontaneousMode,
+                        startLatitude = startLat,
+                        startLongitude = startLng
                     )
                 }
             }
@@ -41,7 +47,15 @@ class ActivityPreferencesActivity : ComponentActivity() {
 }
 
 @Composable
-fun ActivityPreferencesScreen(startHour: Int, endHour: Int, totalBudget: Int, isHungryNow: Boolean) {
+fun ActivityPreferencesScreen(
+    startHour: Int, 
+    endHour: Int, 
+    totalBudget: Int, 
+    isHungryNow: Boolean,
+    isSpontaneousMode: Boolean = false,
+    startLatitude: Double? = null,
+    startLongitude: Double? = null
+) {
     val context = LocalContext.current
     var museumsChecked by remember { mutableStateOf(false) }
     var parksChecked by remember { mutableStateOf(false) }
@@ -63,7 +77,14 @@ fun ActivityPreferencesScreen(startHour: Int, endHour: Int, totalBudget: Int, is
         Text(
             text = "What would you like to do?",
             style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(bottom = 24.dp)
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        Text(
+            text = "(Optional - skip for food & nightlife only)",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 16.dp)
         )
 
         // Museums
@@ -153,29 +174,27 @@ fun ActivityPreferencesScreen(startHour: Int, endHour: Int, totalBudget: Int, is
                     if (historicSitesChecked) selectedActivities.add("historic_sites")
                     if (shoppingChecked) selectedActivities.add("shopping")
 
-                    if (selectedActivities.isNotEmpty()) {
-                        Log.d("ActivityPreferences", "Starting RestaurantSelectionActivity")
-                        Log.d("ActivityPreferences", "Time range: $startHour to $endHour, Budget: $$totalBudget, HungryNow: $isHungryNow")
-                        Log.d("ActivityPreferences", "Activities: $selectedActivities")
-                        
-                        val intent = Intent(context, RestaurantSelectionActivity::class.java).apply {
-                            putExtra("startHour", startHour)
-                            putExtra("endHour", endHour)
-                            putExtra("totalBudget", totalBudget)
-                            putExtra("isHungryNow", isHungryNow)
-                            putExtra("activityTypes", selectedActivities.toTypedArray())
-                        }
-                        context.startActivity(intent)
-                        (context as? ComponentActivity)?.finish()
-                    } else {
-                        Log.d("ActivityPreferences", "No activities selected")
+                    Log.d("ActivityPreferences", "Starting RestaurantSelectionActivity")
+                    Log.d("ActivityPreferences", "Time range: $startHour to $endHour, Budget: $$totalBudget, HungryNow: $isHungryNow, Spontaneous: $isSpontaneousMode")
+                    Log.d("ActivityPreferences", "Activities: ${if (selectedActivities.isEmpty()) "NONE (food/nightlife only)" else selectedActivities.toString()}")
+                    
+                    val intent = Intent(context, RestaurantSelectionActivity::class.java).apply {
+                        putExtra("startHour", startHour)
+                        putExtra("endHour", endHour)
+                        putExtra("totalBudget", totalBudget)
+                        putExtra("isHungryNow", isHungryNow)
+                        putExtra("isSpontaneousMode", isSpontaneousMode)
+                        putExtra("activityTypes", selectedActivities.toTypedArray())
+                        if (startLatitude != null) putExtra("startLatitude", startLatitude)
+                        if (startLongitude != null) putExtra("startLongitude", startLongitude)
                     }
+                    context.startActivity(intent)
+                    (context as? ComponentActivity)?.finish()
                 } catch (e: Exception) {
                     Log.e("ActivityPreferences", "Error starting activity", e)
                 }
             },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = museumsChecked || parksChecked || waterfrontChecked || historicSitesChecked || shoppingChecked
+            modifier = Modifier.fillMaxWidth()
         ) {
             Text("Continue")
         }
