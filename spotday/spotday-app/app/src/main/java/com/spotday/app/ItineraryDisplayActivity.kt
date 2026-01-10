@@ -54,12 +54,13 @@ class ItineraryDisplayActivity : ComponentActivity() {
         val isSpontaneousMode = intent.getBooleanExtra("isSpontaneousMode", false)
         val activityTypes = intent.getStringArrayExtra("activityTypes")?.toList() ?: emptyList()
         val foodTypes = intent.getStringArrayExtra("foodTypes")?.toList() ?: emptyList()
+        val serviceStyles = intent.getStringArrayExtra("serviceStyles")?.toList() ?: emptyList()
         val nightlifeTypes = intent.getStringArrayExtra("nightlifeTypes")?.toList() ?: emptyList()
         val selectedEventIds = intent.getStringArrayExtra("selectedEventIds")?.toList() ?: emptyList()
         val startLat = intent.getDoubleExtra("startLatitude", 0.0).takeIf { it != 0.0 }
         val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
         
-        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode, activities=$activityTypes, food=$foodTypes, nightlife=$nightlifeTypes, events=${selectedEventIds.size}")
+        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode, activities=$activityTypes, food=$foodTypes, styles=${if (serviceStyles.isEmpty()) "ALL" else serviceStyles}, nightlife=$nightlifeTypes, events=${selectedEventIds.size}")
         if (startLat != null && startLng != null) {
             Log.d("ItineraryDisplay", "Starting location: ($startLat, $startLng)")
         }
@@ -80,6 +81,7 @@ class ItineraryDisplayActivity : ComponentActivity() {
                         startLongitude = startLng,
                         activityTypes = activityTypes,
                         foodTypes = foodTypes,
+                        serviceStyles = serviceStyles,
                         nightlifeTypes = nightlifeTypes,
                         selectedEventIds = selectedEventIds
                     )
@@ -99,6 +101,7 @@ class ItineraryViewModel(
     private val startLongitude: Double?,
     private val activityTypes: List<String>,
     private val foodTypes: List<String>,
+    private val serviceStyles: List<String>,
     private val nightlifeTypes: List<String>,
     private val selectedEventIds: List<String>,
     placesRepository: PlacesRepository
@@ -149,6 +152,7 @@ class ItineraryViewModel(
                         totalBudget = totalBudget,
                         activityTypes = activityTypes,
                         foodTypes = foodTypes,
+                        serviceStyles = serviceStyles,
                         isHungryNow = isHungryNow,
                         isSpontaneousMode = isSpontaneousMode,
                         userStartLat = startLatitude,
@@ -180,6 +184,7 @@ fun ItineraryDisplayScreen(
     startLongitude: Double? = null,
     activityTypes: List<String>,
     foodTypes: List<String>,
+    serviceStyles: List<String> = emptyList(),
     nightlifeTypes: List<String> = emptyList(),
     selectedEventIds: List<String> = emptyList()
 ) {
@@ -200,6 +205,7 @@ fun ItineraryDisplayScreen(
                     startLongitude,
                     activityTypes, 
                     foodTypes,
+                    serviceStyles,
                     nightlifeTypes,
                     selectedEventIds,
                     placesRepository

@@ -11,6 +11,7 @@ import com.google.android.libraries.places.api.net.PlacesClient
 import com.spotday.app.BuildConfig
 import com.spotday.app.model.Place as AppPlace
 import com.spotday.app.model.PlaceType
+import com.spotday.app.model.ServiceStyle
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -42,7 +43,12 @@ class PlacesRepository(private val context: Context) {
         return when (this.type) {
             PlaceType.MUSEUM -> this.copy(openHour = 10, closeHour = 17, isOutdoor = false)
             PlaceType.PARK -> this.copy(openHour = 6, closeHour = 22, isOutdoor = true)
-            PlaceType.RESTAURANT -> this.copy(openHour = 7, closeHour = 22, isOutdoor = false)
+            PlaceType.RESTAURANT -> this.copy(
+                openHour = 7, 
+                closeHour = 22, 
+                isOutdoor = false,
+                serviceStyle = getServiceStyle(this.id, this.priceLevel)
+            )
             PlaceType.NIGHTLIFE -> this.copy(openHour = 16, closeHour = 2, isOutdoor = false)
             PlaceType.SHOPPING -> this.copy(openHour = 10, closeHour = 21, isOutdoor = false)
             PlaceType.WATERFRONT -> this.copy(openHour = 6, closeHour = 22, isOutdoor = true)
@@ -57,6 +63,51 @@ class PlacesRepository(private val context: Context) {
                     this.copy(openHour = 9, closeHour = 18, isOutdoor = false)
                 }
             }
+        }
+    }
+    
+    /**
+     * Determine service style for a restaurant based on ID or price level.
+     * - QUICK: Food trucks, cafes, fast casual, bakeries, delis, grab-and-go
+     * - CASUAL: Most neighborhood restaurants (default for price level 2)
+     * - FORMAL: Fine dining, upscale (price level 3-4 or specific high-end spots)
+     */
+    private fun getServiceStyle(id: String, priceLevel: Int): ServiceStyle {
+        // Explicit FORMAL restaurants (fine dining, tasting menus, upscale)
+        val formalRestaurants = setOf(
+            "atelier_crenn", "quince", "benu", "lazy_bear", "acquerello",
+            "rich_table", "jardiniere", "boulevard", "aziza", "hakkasan",
+            "spruce", "farallon", "waterbar", "scomas", "alioto",
+            "franciscan", "frances", "foreign_cinema"
+        )
+        
+        // Explicit QUICK restaurants (counter service, grab-and-go, fast casual)
+        val quickRestaurants = setOf(
+            // Taquerias and quick Mexican
+            "la_taqueria", "el_farolito", "la_palma", "taqueria_cancun", 
+            "pancho_villa", "lolos", "el_tonayense", "taqueria_guadalajara",
+            "el_buen_comer", "taqueria_vallarta", "la_victoria", "panchitas",
+            "los_panchos", "el_zocalo", "panchitas_noe", "el_rincon_yucateco", "gordo",
+            // Pizza slices and quick Italian
+            "golden_boy", "molinari", "liguria_bakery", "picas",
+            // Quick Asian
+            "house_nanking", "mensho_tokyo", "hinodeya", "benkyodo", 
+            "ramen_yamadaya", "ramen_underground", "izakaya_sozai",
+            // Cafes and bakeries
+            "trouble_coffee", "devils_teeth", "arizmendi", "tartine_manufactory",
+            "sentinel", "saigon_sandwich", "greens_to_go",
+            // Fast casual
+            "souvla", "souvla_hayes", "tacko", "papalote",
+            "yamo", "loving_hut", "herbivore", "golden_era",
+            "shangri_la", "vegan_picnic", "rosamunde"
+        )
+        
+        return when {
+            id in formalRestaurants -> ServiceStyle.FORMAL
+            id in quickRestaurants -> ServiceStyle.QUICK
+            priceLevel >= 3 -> ServiceStyle.FORMAL  // $$$ and $$$$ default to formal
+            priceLevel == 1 -> ServiceStyle.QUICK   // $ default to quick
+            else -> ServiceStyle.CASUAL             // $$ default to casual
         }
     }
     

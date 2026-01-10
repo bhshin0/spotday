@@ -72,6 +72,11 @@ fun RestaurantSelectionScreen(
     var seafoodChecked by remember { mutableStateOf(false) }
     var vegetarianChecked by remember { mutableStateOf(false) }
     
+    // Dining style state
+    var quickServiceChecked by remember { mutableStateOf(false) }
+    var casualChecked by remember { mutableStateOf(false) }
+    var formalChecked by remember { mutableStateOf(false) }
+    
     // Nightlife state
     var barsChecked by remember { mutableStateOf(false) }
     var cocktailBarsChecked by remember { mutableStateOf(false) }
@@ -186,6 +191,88 @@ fun RestaurantSelectionScreen(
                 text = "Vegetarian",
                 style = MaterialTheme.typography.bodyLarge
             )
+        }
+
+        // Dining Style Section
+        Divider(modifier = Modifier.padding(vertical = 16.dp))
+
+        Text(
+            text = "Dining Style",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        Text(
+            text = "How much time do you want to spend eating?",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        // Quick Service
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
+            Checkbox(
+                checked = quickServiceChecked,
+                onCheckedChange = { quickServiceChecked = it }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text(
+                    text = "Quick Service (30 min)",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    text = "Food trucks, cafes, fast casual",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // Casual Sit-down
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
+            Checkbox(
+                checked = casualChecked,
+                onCheckedChange = { casualChecked = it }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text(
+                    text = "Casual Sit-down (60 min)",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    text = "Neighborhood restaurants, diners",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // Formal Sit-down
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
+            Checkbox(
+                checked = formalChecked,
+                onCheckedChange = { formalChecked = it }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text(
+                    text = "Formal Sit-down (90 min)",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    text = "Fine dining, upscale (dinner only)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         // Nightlife Section
@@ -315,12 +402,19 @@ fun RestaurantSelectionScreen(
                     if (diveBarsChecked) selectedNightlifeTypes.add("dive_bars")
                     if (rooftopBarsChecked) selectedNightlifeTypes.add("rooftop_bars")
 
+                    // Service styles (empty = all allowed)
+                    val selectedServiceStyles = mutableListOf<String>()
+                    if (quickServiceChecked) selectedServiceStyles.add("quick")
+                    if (casualChecked) selectedServiceStyles.add("casual")
+                    if (formalChecked) selectedServiceStyles.add("formal")
+
                     // Allow proceeding with either food or nightlife selected (for bar crawl mode)
                     if (selectedFoodTypes.isNotEmpty() || selectedNightlifeTypes.isNotEmpty()) {
                         Log.d("RestaurantSelection", "Starting ItineraryDisplayActivity")
                         Log.d("RestaurantSelection", "Time range: $startHour to $endHour, Budget: $$totalBudget, HungryNow: $isHungryNow, Spontaneous: $isSpontaneousMode")
                         Log.d("RestaurantSelection", "Activity types: $activityTypes")
                         Log.d("RestaurantSelection", "Food types: $selectedFoodTypes")
+                        Log.d("RestaurantSelection", "Service styles: ${if (selectedServiceStyles.isEmpty()) "ALL" else selectedServiceStyles}")
                         Log.d("RestaurantSelection", "Nightlife types: $selectedNightlifeTypes")
                         Log.d("RestaurantSelection", "Selected events: $selectedEventIds")
                         if (startLatitude != null && startLongitude != null) {
@@ -335,6 +429,7 @@ fun RestaurantSelectionScreen(
                             putExtra("isSpontaneousMode", isSpontaneousMode)
                             putExtra("activityTypes", activityTypes.toTypedArray())
                             putExtra("foodTypes", selectedFoodTypes.toTypedArray())
+                            putExtra("serviceStyles", selectedServiceStyles.toTypedArray())
                             putExtra("nightlifeTypes", selectedNightlifeTypes.toTypedArray())
                             putExtra("selectedEventIds", selectedEventIds.toTypedArray())
                             if (startLatitude != null) putExtra("startLatitude", startLatitude)

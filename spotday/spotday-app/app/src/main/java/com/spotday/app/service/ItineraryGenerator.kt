@@ -7,6 +7,7 @@ import com.spotday.app.model.Event
 import com.spotday.app.model.ItineraryStop
 import com.spotday.app.model.Place
 import com.spotday.app.model.PlaceType
+import com.spotday.app.model.ServiceStyle
 import com.spotday.app.util.TransitHelper
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -418,6 +419,7 @@ class ItineraryGenerator(
         totalBudget: Int,
         activityTypes: List<String>,
         foodTypes: List<String>,
+        serviceStyles: List<String> = emptyList(), // Empty = all styles allowed
         isHungryNow: Boolean = false,
         isSpontaneousMode: Boolean = false,
         userStartLat: Double? = null,
@@ -426,7 +428,7 @@ class ItineraryGenerator(
         avoidOutdoor: Boolean = false,
         selectedEventIds: List<String> = emptyList()
     ): List<ItineraryStop> {
-        Log.d("ItineraryGenerator", "Generating itinerary from $startHour to $endHour, budget: $$totalBudget, activities: $activityTypes, food: $foodTypes, hungryNow: $isHungryNow, spontaneous: $isSpontaneousMode, nightlife: $nightlifeTypes, avoidOutdoor: $avoidOutdoor, events: ${selectedEventIds.size}")
+        Log.d("ItineraryGenerator", "Generating itinerary from $startHour to $endHour, budget: $$totalBudget, activities: $activityTypes, food: $foodTypes, serviceStyles: ${if (serviceStyles.isEmpty()) "ALL" else serviceStyles}, hungryNow: $isHungryNow, spontaneous: $isSpontaneousMode, nightlife: $nightlifeTypes, avoidOutdoor: $avoidOutdoor, events: ${selectedEventIds.size}")
 
         val totalHours = endHour - startHour
         val budgetBuffer = (totalBudget * BUDGET_BUFFER_PERCENTAGE).toInt()
@@ -478,7 +480,31 @@ class ItineraryGenerator(
             candidateActivities.addAll(placesRepository.searchShopping())
         }
 
-        val candidateRestaurants = placesRepository.searchRestaurants(foodTypes)
+        val allCandidateRestaurants = placesRepository.searchRestaurants(foodTypes)
+        
+        // Parse service styles from strings
+        val allowedStyles: Set<ServiceStyle> = if (serviceStyles.isEmpty()) {
+            // Empty = all styles allowed
+            ServiceStyle.entries.toSet()
+        } else {
+            serviceStyles.mapNotNull { style ->
+                when (style.lowercase()) {
+                    "quick" -> ServiceStyle.QUICK
+                    "casual" -> ServiceStyle.CASUAL
+                    "formal" -> ServiceStyle.FORMAL
+                    else -> null
+                }
+            }.toSet()
+        }
+        
+        Log.d("ItineraryGenerator", "Filtering restaurants by service styles: $allowedStyles")
+        
+        // Filter restaurants by allowed service styles
+        val candidateRestaurants = allCandidateRestaurants.filter { restaurant ->
+            restaurant.serviceStyle in allowedStyles
+        }
+        
+        Log.d("ItineraryGenerator", "Restaurants after style filtering: ${candidateRestaurants.size}/${allCandidateRestaurants.size}")
 
         // Shuffle first for variety, then sort by:
         // 1. Outdoor preference (indoor first if avoidOutdoor is true)
@@ -620,12 +646,23 @@ class ItineraryGenerator(
             when (slot.type) {
                 "meal" -> {
                     val currentHour = slot.idealHour
+                    val isDinnerTime = currentHour >= DINNER_START_HOUR
+                    
                     // Find unselected restaurants within budget using nearest-neighbor
                     // Also filter by operating hours
+                    // FORMAL restaurants are only allowed for dinner (17:00+)
                     val availableRestaurants = sortedRestaurants
                         .filterNot { usedPlaces.contains(it.id) }
                         .filter { currentCost + it.estimatedCost <= budgetBuffer }
                         .filter { isOpenAt(it, currentHour) }
+                        .filter { restaurant ->
+                            // Only allow formal dining for dinner slots
+                            if (restaurant.serviceStyle == ServiceStyle.FORMAL) {
+                                isDinnerTime
+                            } else {
+                                true
+                            }
+                        }
                     
                     if (availableRestaurants.isNotEmpty()) {
                         // Pick from top 3 closest restaurants for variety (not always the absolute closest)
@@ -637,7 +674,8 @@ class ItineraryGenerator(
                         
                         if (selectedRestaurant != null) {
                             val distance = calculateDistance(currentLat, currentLng, selectedRestaurant.lat, selectedRestaurant.lng)
-                            val stop = createStop(selectedRestaurant, calendar, RESTAURANT_DURATION_MINUTES, distance)
+                            val restaurantDuration = getDuration(selectedRestaurant)
+                            val stop = createStop(selectedRestaurant, calendar, restaurantDuration, distance)
                             itinerary.add(stop)
                             currentCost += selectedRestaurant.estimatedCost
                             usedPlaces.add(selectedRestaurant.id)
@@ -647,7 +685,7 @@ class ItineraryGenerator(
                             currentLng = selectedRestaurant.lng
                             totalDistance += distance
                             
-                            Log.d("ItineraryGenerator", "Added ${slot.mealType}: ${selectedRestaurant.name} (cost: $${selectedRestaurant.estimatedCost}, distance: ${"%.2f".format(distance)} km, total: $$currentCost)")
+                            Log.d("ItineraryGenerator", "Added ${slot.mealType}: ${selectedRestaurant.name} (${selectedRestaurant.serviceStyle}, ${restaurantDuration}min, cost: $${selectedRestaurant.estimatedCost}, distance: ${"%.2f".format(distance)} km, total: $$currentCost)")
                             
                             // Add travel time to next stop
                             calendar.add(Calendar.MINUTE, TRAVEL_TIME_MINUTES)
@@ -885,11 +923,29 @@ class ItineraryGenerator(
         return when (type) {
             PlaceType.MUSEUM -> MUSEUM_DURATION_MINUTES
             PlaceType.PARK -> PARK_DURATION_MINUTES
-            PlaceType.RESTAURANT -> RESTAURANT_DURATION_MINUTES
+            PlaceType.RESTAURANT -> RESTAURANT_DURATION_MINUTES // Default, but use getDuration(Place) for service style
             PlaceType.WATERFRONT -> WATERFRONT_DURATION_MINUTES
             PlaceType.HISTORIC_SITE -> HISTORIC_SITE_DURATION_MINUTES
             PlaceType.SHOPPING -> SHOPPING_DURATION_MINUTES
             PlaceType.NIGHTLIFE -> NIGHTLIFE_DURATION_MINUTES
+        }
+    }
+    
+    /**
+     * Get duration for a place, accounting for service style for restaurants.
+     * - QUICK: 30 minutes (food trucks, cafes, fast casual)
+     * - CASUAL: 60 minutes (sit-down restaurants)
+     * - FORMAL: 90 minutes (fine dining)
+     */
+    private fun getDuration(place: Place): Int {
+        return if (place.type == PlaceType.RESTAURANT) {
+            when (place.serviceStyle) {
+                ServiceStyle.QUICK -> 30
+                ServiceStyle.CASUAL -> 60
+                ServiceStyle.FORMAL -> 90
+            }
+        } else {
+            getDuration(place.type)
         }
     }
 }

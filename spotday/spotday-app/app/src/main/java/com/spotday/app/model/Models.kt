@@ -20,6 +20,12 @@ enum class EventType {
     CLASS_WORKSHOP
 }
 
+enum class ServiceStyle {
+    QUICK,      // 30 min - food trucks, cafes, fast casual, grab-and-go
+    CASUAL,     // 60 min - neighborhood restaurants, diners, bistros
+    FORMAL      // 90 min - fine dining, upscale (dinner only)
+}
+
 data class Event(
     val id: String,
     val name: String,
@@ -49,7 +55,8 @@ data class Place(
     val estimatedCost: Int = 0,    // Calculated cost per person
     val openHour: Int = 6,         // Opens at 6 AM by default
     val closeHour: Int = 22,       // Closes at 10 PM by default
-    val isOutdoor: Boolean = false // For weather-aware recommendations
+    val isOutdoor: Boolean = false, // For weather-aware recommendations
+    val serviceStyle: ServiceStyle = ServiceStyle.CASUAL // Restaurant service style
 )
 
 data class TransitEstimate(
@@ -80,6 +87,7 @@ data class UserPreferences(
     val startLatitude: Double? = null,  // null = use random SF location
     val startLongitude: Double? = null,
     val nightlifeTypes: List<String> = emptyList(),
-    val selectedEventIds: List<String> = emptyList()
+    val selectedEventIds: List<String> = emptyList(),
+    val serviceStyles: List<ServiceStyle> = emptyList() // Empty = all styles allowed
 )
 
