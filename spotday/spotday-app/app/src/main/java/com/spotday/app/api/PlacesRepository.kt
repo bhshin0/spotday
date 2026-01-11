@@ -65,6 +65,14 @@ class PlacesRepository(private val context: Context) {
      * Shopping: 10 AM - 9 PM (indoor)
      * Waterfront: 6 AM - 10 PM (outdoor)
      * Historic Sites: 9 AM - 6 PM (varies outdoor/indoor)
+     * Entertainment: 7 PM - 11 PM (indoor, evening focused)
+     * Games: 11 AM - 10 PM (indoor)
+     * Outdoor: 8 AM - 6 PM (outdoor, daylight)
+     * Wellness: 9 AM - 9 PM (indoor)
+     * Brewery: 12 PM - 9 PM (indoor)
+     * Class: 10 AM - 8 PM (indoor)
+     * Market: 7 AM - 2 PM (outdoor, morning focused)
+     * Sports: 7 AM - 10 PM (varies)
      */
     private fun AppPlace.withTypeDefaults(): AppPlace {
         return when (this.type) {
@@ -90,6 +98,15 @@ class PlacesRepository(private val context: Context) {
                     this.copy(openHour = 9, closeHour = 18, isOutdoor = false)
                 }
             }
+            // New activity categories
+            PlaceType.ENTERTAINMENT -> this.copy(openHour = 19, closeHour = 23, isOutdoor = false)
+            PlaceType.GAMES -> this.copy(openHour = 11, closeHour = 22, isOutdoor = false)
+            PlaceType.OUTDOOR -> this.copy(openHour = 8, closeHour = 18, isOutdoor = true)
+            PlaceType.WELLNESS -> this.copy(openHour = 9, closeHour = 21, isOutdoor = false)
+            PlaceType.BREWERY -> this.copy(openHour = 12, closeHour = 21, isOutdoor = false)
+            PlaceType.CLASS -> this.copy(openHour = 10, closeHour = 20, isOutdoor = false)
+            PlaceType.MARKET -> this.copy(openHour = 7, closeHour = 14, isOutdoor = true)
+            PlaceType.SPORTS -> this.copy(openHour = 7, closeHour = 22, isOutdoor = true)
         }
     }
     
@@ -981,5 +998,173 @@ class PlacesRepository(private val context: Context) {
         
         Log.d("PlacesRepository", "Found ${allNightlife.size} nightlife venues")
         return allNightlife.applyTypeDefaults()
+    }
+
+    suspend fun searchEntertainment(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for entertainment in SF")
+        return listOf<AppPlace>(
+            // Comedy Clubs
+            AppPlace("cobbs_comedy", "Cobb's Comedy Club", PlaceType.ENTERTAINMENT, 37.8058, -122.4214, 4.6f, true, 2, 30),
+            AppPlace("punch_line", "Punch Line Comedy Club", PlaceType.ENTERTAINMENT, 37.7944, -122.3972, 4.5f, true, 2, 25),
+            AppPlace("setup_comedy", "Setup SF", PlaceType.ENTERTAINMENT, 37.7802, -122.4100, 4.4f, true, 2, 20),
+            AppPlace("doc_ricketts", "Doc Ricketts", PlaceType.ENTERTAINMENT, 37.7810, -122.4095, 4.3f, true, 2, 18),
+            // Theaters
+            AppPlace("curran_theatre", "Curran Theatre", PlaceType.ENTERTAINMENT, 37.7864, -122.4119, 4.7f, true, 3, 80),
+            AppPlace("orpheum_theatre", "Orpheum Theatre", PlaceType.ENTERTAINMENT, 37.7803, -122.4175, 4.6f, true, 3, 75),
+            AppPlace("ggolden_gate_theatre", "Golden Gate Theatre", PlaceType.ENTERTAINMENT, 37.7827, -122.4115, 4.6f, true, 3, 70),
+            AppPlace("act_theatre", "American Conservatory Theater", PlaceType.ENTERTAINMENT, 37.7867, -122.4074, 4.7f, true, 3, 60),
+            AppPlace("marines_memorial", "Marines Memorial Theatre", PlaceType.ENTERTAINMENT, 37.7888, -122.4080, 4.5f, true, 2, 45),
+            // Live Shows / Cabaret
+            AppPlace("beach_blanket", "Beach Blanket Babylon", PlaceType.ENTERTAINMENT, 37.7978, -122.4083, 4.8f, true, 3, 65),
+            AppPlace("the_marsh", "The Marsh", PlaceType.ENTERTAINMENT, 37.7619, -122.4218, 4.5f, true, 2, 30),
+            AppPlace("brava_theater", "Brava Theater", PlaceType.ENTERTAINMENT, 37.7555, -122.4208, 4.4f, true, 2, 35),
+            AppPlace("magic_theatre", "Magic Theatre", PlaceType.ENTERTAINMENT, 37.8056, -122.4320, 4.5f, true, 2, 40),
+            AppPlace("exit_theatre", "Exit Theatre", PlaceType.ENTERTAINMENT, 37.7857, -122.4130, 4.3f, true, 2, 25),
+            // Dinner Theater
+            AppPlace("teatro_zinzanni", "Teatro ZinZanni", PlaceType.ENTERTAINMENT, 37.7926, -122.3963, 4.6f, true, 3, 120)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchGames(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for games/fun in SF")
+        return listOf<AppPlace>(
+            // Escape Rooms
+            AppPlace("escape_sf", "Escape SF", PlaceType.GAMES, 37.7869, -122.4064, 4.5f, true, 2, 35),
+            AppPlace("reason", "Reason", PlaceType.GAMES, 37.7892, -122.4012, 4.6f, true, 2, 40),
+            AppPlace("palace_games", "Palace Games", PlaceType.GAMES, 37.8035, -122.4478, 4.7f, true, 2, 45),
+            AppPlace("escape_room_sf", "The Escape Room SF", PlaceType.GAMES, 37.7755, -122.4186, 4.4f, true, 2, 35),
+            // Bowling
+            AppPlace("presidio_bowl", "Presidio Bowl", PlaceType.GAMES, 37.7887, -122.4587, 4.4f, true, 2, 30),
+            AppPlace("yerba_buena_bowl", "Yerba Buena Bowling", PlaceType.GAMES, 37.7850, -122.4040, 4.3f, true, 2, 25),
+            AppPlace("lucky_strike", "Lucky Strike SF", PlaceType.GAMES, 37.7856, -122.4066, 4.4f, true, 2, 35),
+            // Arcades & Games
+            AppPlace("musee_mecanique", "Musee Mecanique", PlaceType.GAMES, 37.8090, -122.4185, 4.6f, true, 1, 10),
+            AppPlace("urban_putt", "Urban Putt", PlaceType.GAMES, 37.7575, -122.4215, 4.5f, true, 2, 25),
+            AppPlace("coin_op", "Coin-Op Game Room", PlaceType.GAMES, 37.7605, -122.4195, 4.4f, true, 2, 20),
+            AppPlace("emporium_sf", "Emporium SF", PlaceType.GAMES, 37.7697, -122.4334, 4.5f, true, 2, 25),
+            // Other Fun
+            AppPlace("spin_sf", "SPiN San Francisco", PlaceType.GAMES, 37.7794, -122.4098, 4.4f, true, 2, 25),
+            AppPlace("axe_throwing", "Urban Axes SF", PlaceType.GAMES, 37.7752, -122.4175, 4.3f, true, 2, 30)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchOutdoor(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for outdoor activities in SF")
+        return listOf<AppPlace>(
+            // Kayaking / Water
+            AppPlace("city_kayak", "City Kayak", PlaceType.OUTDOOR, 37.7785, -122.3880, 4.5f, true, 2, 60),
+            AppPlace("sea_trek", "Sea Trek Kayak", PlaceType.OUTDOOR, 37.8588, -122.4897, 4.6f, true, 2, 75),
+            AppPlace("bay_voyager", "Bay Voyager", PlaceType.OUTDOOR, 37.7956, -122.3935, 4.4f, true, 2, 50),
+            // Bike Rentals / Tours
+            AppPlace("blazing_saddles", "Blazing Saddles", PlaceType.OUTDOOR, 37.8082, -122.4181, 4.5f, true, 2, 45),
+            AppPlace("bay_city_bike", "Bay City Bike", PlaceType.OUTDOOR, 37.8079, -122.4195, 4.4f, true, 2, 40),
+            AppPlace("golden_gate_park_bikes", "Golden Gate Park Bike Rental", PlaceType.OUTDOOR, 37.7694, -122.4862, 4.5f, true, 2, 35),
+            AppPlace("wheel_fun_rentals", "Wheel Fun Rentals", PlaceType.OUTDOOR, 37.7694, -122.4720, 4.3f, true, 2, 30),
+            // Segway / Electric
+            AppPlace("sf_segway", "SF Electric Tour", PlaceType.OUTDOOR, 37.8076, -122.4172, 4.4f, true, 2, 65),
+            // Hiking / Walking
+            AppPlace("lands_end_trails", "Lands End Trails", PlaceType.OUTDOOR, 37.7849, -122.5080, 4.8f, true, 0, 0),
+            AppPlace("batteries_bluffs", "Batteries to Bluffs Trail", PlaceType.OUTDOOR, 37.7975, -122.4814, 4.7f, true, 0, 0),
+            AppPlace("glen_park_greenway", "Glen Park Greenway", PlaceType.OUTDOOR, 37.7348, -122.4336, 4.5f, true, 0, 0),
+            // Sailing
+            AppPlace("sf_sailing", "SF Sailing Company", PlaceType.OUTDOOR, 37.8084, -122.4098, 4.6f, true, 3, 100),
+            AppPlace("adventure_cat", "Adventure Cat Sailing", PlaceType.OUTDOOR, 37.8084, -122.4098, 4.5f, true, 2, 75)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchWellness(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for wellness in SF")
+        return listOf<AppPlace>(
+            // Spas / Bathhouses
+            AppPlace("kabuki_springs", "Kabuki Springs & Spa", PlaceType.WELLNESS, 37.7851, -122.4307, 4.7f, true, 2, 45),
+            AppPlace("archimedes_banya", "Archimedes Banya", PlaceType.WELLNESS, 37.7785, -122.4000, 4.6f, true, 2, 50),
+            AppPlace("imperial_day_spa", "Imperial Day Spa", PlaceType.WELLNESS, 37.7856, -122.4083, 4.4f, true, 2, 60),
+            AppPlace("nob_hill_spa", "Nob Hill Spa", PlaceType.WELLNESS, 37.7918, -122.4102, 4.5f, true, 3, 120),
+            AppPlace("remede_spa", "Remede Spa", PlaceType.WELLNESS, 37.7863, -122.4092, 4.6f, true, 3, 150),
+            // Yoga Studios
+            AppPlace("yoga_tree", "Yoga Tree Castro", PlaceType.WELLNESS, 37.7612, -122.4348, 4.5f, true, 1, 25),
+            AppPlace("yoga_flow", "Yoga Flow SF", PlaceType.WELLNESS, 37.7600, -122.4200, 4.4f, true, 1, 25),
+            AppPlace("lovingkindness", "LovingKindness Yoga", PlaceType.WELLNESS, 37.7550, -122.4170, 4.5f, true, 1, 22),
+            // Float / Meditation
+            AppPlace("reboot_float", "Reboot Float Spa", PlaceType.WELLNESS, 37.7925, -122.4047, 4.6f, true, 2, 80),
+            AppPlace("float_matrix", "Float Matrix", PlaceType.WELLNESS, 37.7700, -122.4340, 4.4f, true, 2, 70)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchBreweries(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for breweries in SF")
+        return listOf<AppPlace>(
+            // Breweries
+            AppPlace("anchor_brewing", "Anchor Brewing Company", PlaceType.BREWERY, 37.7645, -122.4003, 4.7f, true, 2, 25),
+            AppPlace("fort_point_beer", "Fort Point Beer Company", PlaceType.BREWERY, 37.8033, -122.4477, 4.6f, true, 2, 20),
+            AppPlace("almanac_beer", "Almanac Beer Co", PlaceType.BREWERY, 37.7518, -122.4083, 4.5f, true, 2, 22),
+            AppPlace("harmonic_brewing", "Harmonic Brewing", PlaceType.BREWERY, 37.7693, -122.4019, 4.4f, true, 2, 18),
+            AppPlace("standard_deviant", "Standard Deviant Brewing", PlaceType.BREWERY, 37.7595, -122.4210, 4.5f, true, 2, 20),
+            AppPlace("southern_pacific", "Southern Pacific Brewing", PlaceType.BREWERY, 37.7580, -122.4180, 4.4f, true, 2, 18),
+            AppPlace("barebottle", "Barebottle Brewing", PlaceType.BREWERY, 37.7400, -122.4070, 4.5f, true, 2, 18),
+            // Wine Bars / Tasting
+            AppPlace("press_club", "Press Club", PlaceType.BREWERY, 37.7852, -122.4007, 4.4f, true, 2, 35),
+            AppPlace("wine_down", "Wine Down SF", PlaceType.BREWERY, 37.7605, -122.4185, 4.3f, true, 2, 28),
+            AppPlace("arlequin_wine", "Arlequin Wine Merchant", PlaceType.BREWERY, 37.7760, -122.4240, 4.5f, true, 2, 25),
+            // Distilleries
+            AppPlace("seven_stills", "Seven Stills", PlaceType.BREWERY, 37.7560, -122.4070, 4.4f, true, 2, 22),
+            AppPlace("hotaling_co", "Hotaling & Co", PlaceType.BREWERY, 37.7970, -122.4020, 4.5f, true, 2, 30)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchClasses(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for classes in SF")
+        return listOf<AppPlace>(
+            // Cooking Classes
+            AppPlace("sur_la_table", "Sur La Table Cooking Class", PlaceType.CLASS, 37.7956, -122.3935, 4.5f, true, 2, 85),
+            AppPlace("sf_cooking_school", "San Francisco Cooking School", PlaceType.CLASS, 37.7755, -122.4186, 4.6f, true, 2, 95),
+            AppPlace("draeger_culinary", "Draeger's Cooking School", PlaceType.CLASS, 37.7850, -122.4060, 4.4f, true, 2, 80),
+            AppPlace("18_reasons", "18 Reasons", PlaceType.CLASS, 37.7550, -122.4170, 4.5f, true, 2, 65),
+            // Art / Pottery
+            AppPlace("color_me_mine", "Color Me Mine", PlaceType.CLASS, 37.8020, -122.4340, 4.3f, true, 2, 35),
+            AppPlace("clay_by_bay", "Clay by the Bay", PlaceType.CLASS, 37.7945, -122.4072, 4.5f, true, 2, 55),
+            AppPlace("paint_nite", "Paint Nite SF", PlaceType.CLASS, 37.7760, -122.4240, 4.4f, true, 2, 45),
+            AppPlace("workshop_sf", "Workshop SF", PlaceType.CLASS, 37.7585, -122.4120, 4.5f, true, 2, 75),
+            // Craft / DIY
+            AppPlace("the_workshop", "The Workshop Residence", PlaceType.CLASS, 37.7545, -122.4188, 4.4f, true, 2, 60),
+            AppPlace("general_assembly", "General Assembly", PlaceType.CLASS, 37.7878, -122.4007, 4.3f, true, 2, 50)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchMarkets(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for markets in SF")
+        return listOf<AppPlace>(
+            // Farmers Markets
+            AppPlace("ferry_farmers", "Ferry Plaza Farmers Market", PlaceType.MARKET, 37.7956, -122.3935, 4.8f, true, 0, 0),
+            AppPlace("alemany_farmers", "Alemany Farmers Market", PlaceType.MARKET, 37.7329, -122.4127, 4.6f, true, 0, 0),
+            AppPlace("castro_farmers", "Castro Farmers Market", PlaceType.MARKET, 37.7620, -122.4350, 4.4f, true, 0, 0),
+            AppPlace("mission_community", "Mission Community Market", PlaceType.MARKET, 37.7525, -122.4178, 4.5f, true, 0, 0),
+            AppPlace("noe_valley_farmers", "Noe Valley Farmers Market", PlaceType.MARKET, 37.7510, -122.4320, 4.5f, true, 0, 0),
+            // Flea Markets / Vintage
+            AppPlace("alameda_flea", "Alameda Point Antiques Faire", PlaceType.MARKET, 37.7870, -122.3020, 4.7f, true, 1, 5),
+            AppPlace("treasure_island_flea", "Treasure Island Flea", PlaceType.MARKET, 37.8235, -122.3705, 4.5f, true, 1, 5),
+            // Food Halls
+            AppPlace("ferry_building_market", "Ferry Building Marketplace", PlaceType.MARKET, 37.7956, -122.3935, 4.7f, true, 0, 0)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchSports(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for sports in SF")
+        return listOf<AppPlace>(
+            // Golf
+            AppPlace("presidio_golf", "Presidio Golf Course", PlaceType.SPORTS, 37.7880, -122.4612, 4.5f, true, 2, 80),
+            AppPlace("harding_park", "TPC Harding Park", PlaceType.SPORTS, 37.7250, -122.4920, 4.6f, true, 3, 150),
+            AppPlace("lincoln_park_golf", "Lincoln Park Golf Course", PlaceType.SPORTS, 37.7837, -122.4940, 4.4f, true, 2, 50),
+            AppPlace("golden_gate_golf", "Golden Gate Park Golf Course", PlaceType.SPORTS, 37.7680, -122.4900, 4.3f, true, 1, 25),
+            // Climbing
+            AppPlace("mission_cliffs", "Mission Cliffs", PlaceType.SPORTS, 37.7592, -122.4150, 4.6f, true, 2, 30),
+            AppPlace("dogpatch_boulders", "Dogpatch Boulders", PlaceType.SPORTS, 37.7565, -122.3880, 4.5f, true, 2, 28),
+            AppPlace("planet_granite", "Planet Granite SF", PlaceType.SPORTS, 37.8050, -122.4330, 4.5f, true, 2, 28),
+            // Tennis / Pickleball
+            AppPlace("dolores_tennis", "Dolores Park Tennis", PlaceType.SPORTS, 37.7596, -122.4269, 4.4f, true, 1, 15),
+            AppPlace("golden_gate_tennis", "Golden Gate Park Tennis", PlaceType.SPORTS, 37.7700, -122.4680, 4.5f, true, 1, 20),
+            // Batting Cages
+            AppPlace("south_sf_batting", "South SF Batting Range", PlaceType.SPORTS, 37.6410, -122.4100, 4.3f, true, 1, 20)
+        ).applyTypeDefaults()
     }
 }

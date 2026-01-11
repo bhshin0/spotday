@@ -6,12 +6,17 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.spotday.app.ui.theme.SpotDayTheme
+import com.spotday.app.util.PreferencesManager
 
 class ActivityPreferencesActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,6 +53,24 @@ class ActivityPreferencesActivity : ComponentActivity() {
     }
 }
 
+// Activity options with their display labels
+private val activityOptions = listOf(
+    "museums" to "Museums",
+    "parks" to "Parks",
+    "waterfront" to "Waterfront",
+    "historic_sites" to "Historic",
+    "shopping" to "Shopping",
+    "entertainment" to "Shows",
+    "games" to "Games",
+    "outdoor" to "Outdoors",
+    "wellness" to "Wellness",
+    "breweries" to "Breweries",
+    "classes" to "Classes",
+    "markets" to "Markets",
+    "sports" to "Sports"
+)
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ActivityPreferencesScreen(
     startHour: Int, 
@@ -60,15 +83,17 @@ fun ActivityPreferencesScreen(
     explorationMode: String = "ONE_AREA"
 ) {
     val context = LocalContext.current
-    var museumsChecked by remember { mutableStateOf(false) }
-    var parksChecked by remember { mutableStateOf(false) }
-    var waterfrontChecked by remember { mutableStateOf(false) }
-    var historicSitesChecked by remember { mutableStateOf(false) }
-    var shoppingChecked by remember { mutableStateOf(false) }
+    val preferencesManager = remember { PreferencesManager(context) }
+    
+    // Load saved selections on init
+    var selectedActivities by remember { 
+        mutableStateOf(preferencesManager.getActivitySelections()) 
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp)
     ) {
         Text(
@@ -90,93 +115,53 @@ fun ActivityPreferencesScreen(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Museums
-        Row(
-            modifier = Modifier.padding(vertical = 8.dp)
+        // Filter chips in a flow layout
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Checkbox(
-                checked = museumsChecked,
-                onCheckedChange = { museumsChecked = it }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Museums",
-                style = MaterialTheme.typography.bodyLarge
-            )
+            activityOptions.forEach { (type, label) ->
+                val isSelected = selectedActivities.contains(type)
+                FilterChip(
+                    selected = isSelected,
+                    onClick = {
+                        selectedActivities = if (isSelected) {
+                            selectedActivities - type
+                        } else {
+                            selectedActivities + type
+                        }
+                    },
+                    label = { Text(label) },
+                    leadingIcon = if (isSelected) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    } else null
+                )
+            }
         }
-
-        // Parks
-        Row(
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
-            Checkbox(
-                checked = parksChecked,
-                onCheckedChange = { parksChecked = it }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Parks",
-                style = MaterialTheme.typography.bodyLarge
-            )
-        }
-
-        // Waterfront
-        Row(
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
-            Checkbox(
-                checked = waterfrontChecked,
-                onCheckedChange = { waterfrontChecked = it }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Waterfront",
-                style = MaterialTheme.typography.bodyLarge
-            )
-        }
-
-        // Historic Sites
-        Row(
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
-            Checkbox(
-                checked = historicSitesChecked,
-                onCheckedChange = { historicSitesChecked = it }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Historic Sites",
-                style = MaterialTheme.typography.bodyLarge
-            )
-        }
-
-        // Shopping
-        Row(
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
-            Checkbox(
-                checked = shoppingChecked,
-                onCheckedChange = { shoppingChecked = it }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Shopping",
-                style = MaterialTheme.typography.bodyLarge
-            )
-        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Selection count hint
+        Text(
+            text = if (selectedActivities.isEmpty()) 
+                "No activities selected - will focus on food & drinks"
+            else 
+                "${selectedActivities.size} activit${if (selectedActivities.size == 1) "y" else "ies"} selected",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
         Spacer(modifier = Modifier.weight(1f))
+        
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
                 try {
-                    val selectedActivities = mutableListOf<String>()
-                    if (museumsChecked) selectedActivities.add("museums")
-                    if (parksChecked) selectedActivities.add("parks")
-                    if (waterfrontChecked) selectedActivities.add("waterfront")
-                    if (historicSitesChecked) selectedActivities.add("historic_sites")
-                    if (shoppingChecked) selectedActivities.add("shopping")
-
+                    // Save selections for next time
+                    preferencesManager.saveActivitySelections(selectedActivities)
+                    
                     Log.d("ActivityPreferences", "Starting EventSelectionActivity")
                     Log.d("ActivityPreferences", "Time range: $startHour to $endHour, Budget: $$totalBudget, HungryNow: $isHungryNow, Spontaneous: $isSpontaneousMode")
                     Log.d("ActivityPreferences", "Activities: ${if (selectedActivities.isEmpty()) "NONE (food/nightlife only)" else selectedActivities.toString()}")

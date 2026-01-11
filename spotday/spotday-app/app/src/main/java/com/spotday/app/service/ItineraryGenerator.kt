@@ -38,6 +38,16 @@ class ItineraryGenerator(
         private const val HISTORIC_SITE_DURATION_MINUTES = 60 // 1 hour
         private const val SHOPPING_DURATION_MINUTES = 90 // 1.5 hours
         private const val NIGHTLIFE_DURATION_MINUTES = 120 // 2 hours at a bar/club
+        // New activity durations
+        private const val ENTERTAINMENT_DURATION_MINUTES = 120 // 2 hours (show/performance)
+        private const val GAMES_DURATION_MINUTES = 90 // 1.5 hours (escape room, bowling)
+        private const val OUTDOOR_DURATION_MINUTES = 120 // 2 hours (kayaking, biking)
+        private const val WELLNESS_DURATION_MINUTES = 90 // 1.5 hours (spa, yoga)
+        private const val BREWERY_DURATION_MINUTES = 75 // 1.25 hours (tasting)
+        private const val CLASS_DURATION_MINUTES = 120 // 2 hours (cooking, pottery)
+        private const val MARKET_DURATION_MINUTES = 60 // 1 hour (browsing)
+        private const val SPORTS_DURATION_MINUTES = 120 // 2 hours (golf, climbing)
+        
         private const val TRAVEL_TIME_MINUTES = 30
         private const val BUDGET_BUFFER_PERCENTAGE = 1.2 // Allow 20% over budget
         private const val MINIMUM_MEAL_SPACING_HOURS = 4 // Don't schedule meals closer than 4 hours apart
@@ -558,6 +568,37 @@ class ItineraryGenerator(
         if (activityTypes.contains("shopping")) {
             candidateActivities.addAll(placesRepository.searchShopping())
         }
+        // New activity categories
+        if (activityTypes.contains("entertainment")) {
+            candidateActivities.addAll(placesRepository.searchEntertainment())
+        }
+        if (activityTypes.contains("games")) {
+            candidateActivities.addAll(placesRepository.searchGames())
+        }
+        if (activityTypes.contains("outdoor")) {
+            candidateActivities.addAll(placesRepository.searchOutdoor())
+        }
+        if (activityTypes.contains("wellness")) {
+            candidateActivities.addAll(placesRepository.searchWellness())
+        }
+        if (activityTypes.contains("breweries")) {
+            candidateActivities.addAll(placesRepository.searchBreweries())
+        }
+        if (activityTypes.contains("classes")) {
+            candidateActivities.addAll(placesRepository.searchClasses())
+        }
+        if (activityTypes.contains("markets")) {
+            candidateActivities.addAll(placesRepository.searchMarkets())
+        }
+        if (activityTypes.contains("sports")) {
+            candidateActivities.addAll(placesRepository.searchSports())
+        }
+        
+        Log.d("ItineraryGenerator", "Loaded ${candidateActivities.size} candidate activities for types: $activityTypes")
+        // Log breakdown by type
+        candidateActivities.groupBy { it.type }.forEach { (type, places) ->
+            Log.d("ItineraryGenerator", "  - $type: ${places.size} venues (hours: ${places.firstOrNull()?.openHour}-${places.firstOrNull()?.closeHour})")
+        }
 
         val allCandidateRestaurants = placesRepository.searchRestaurants(foodTypes)
         
@@ -1064,6 +1105,15 @@ class ItineraryGenerator(
             PlaceType.HISTORIC_SITE -> HISTORIC_SITE_DURATION_MINUTES
             PlaceType.SHOPPING -> SHOPPING_DURATION_MINUTES
             PlaceType.NIGHTLIFE -> NIGHTLIFE_DURATION_MINUTES
+            // New activity types
+            PlaceType.ENTERTAINMENT -> ENTERTAINMENT_DURATION_MINUTES
+            PlaceType.GAMES -> GAMES_DURATION_MINUTES
+            PlaceType.OUTDOOR -> OUTDOOR_DURATION_MINUTES
+            PlaceType.WELLNESS -> WELLNESS_DURATION_MINUTES
+            PlaceType.BREWERY -> BREWERY_DURATION_MINUTES
+            PlaceType.CLASS -> CLASS_DURATION_MINUTES
+            PlaceType.MARKET -> MARKET_DURATION_MINUTES
+            PlaceType.SPORTS -> SPORTS_DURATION_MINUTES
         }
     }
     

@@ -656,6 +656,14 @@ fun MainStopCard(stop: ItineraryStop) {
                                 PlaceType.HISTORIC_SITE -> "Historic Site"
                                 PlaceType.SHOPPING -> "Shopping"
                                 PlaceType.NIGHTLIFE -> "Nightlife"
+                                PlaceType.ENTERTAINMENT -> "Entertainment"
+                                PlaceType.GAMES -> "Games"
+                                PlaceType.OUTDOOR -> "Outdoor"
+                                PlaceType.WELLNESS -> "Wellness"
+                                PlaceType.BREWERY -> "Brewery"
+                                PlaceType.CLASS -> "Class"
+                                PlaceType.MARKET -> "Market"
+                                PlaceType.SPORTS -> "Sports"
                             }
                         } ?: ""
                     },

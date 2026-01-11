@@ -7,7 +7,16 @@ enum class PlaceType {
     WATERFRONT,
     HISTORIC_SITE,
     SHOPPING,
-    NIGHTLIFE
+    NIGHTLIFE,
+    // New activity categories
+    ENTERTAINMENT,  // Comedy clubs, theaters, live shows
+    GAMES,          // Escape rooms, bowling, arcades
+    OUTDOOR,        // Kayaking, hiking, bike rentals
+    WELLNESS,       // Spas, yoga, bathhouses
+    BREWERY,        // Breweries, wineries, distilleries
+    CLASS,          // Cooking, pottery, art workshops
+    MARKET,         // Farmers markets, flea markets
+    SPORTS          // Golf, climbing gyms, batting cages
 }
 
 enum class EventType {
