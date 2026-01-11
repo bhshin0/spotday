@@ -24,6 +24,7 @@ class ActivityPreferencesActivity : ComponentActivity() {
         val isSpontaneousMode = intent.getBooleanExtra("isSpontaneousMode", false)
         val startLat = intent.getDoubleExtra("startLatitude", 0.0).takeIf { it != 0.0 }
         val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
+        val explorationMode = intent.getStringExtra("explorationMode") ?: "ONE_AREA"
         
         setContent {
             SpotDayTheme {
@@ -38,7 +39,8 @@ class ActivityPreferencesActivity : ComponentActivity() {
                         isHungryNow = isHungryNow,
                         isSpontaneousMode = isSpontaneousMode,
                         startLatitude = startLat,
-                        startLongitude = startLng
+                        startLongitude = startLng,
+                        explorationMode = explorationMode
                     )
                 }
             }
@@ -54,7 +56,8 @@ fun ActivityPreferencesScreen(
     isHungryNow: Boolean,
     isSpontaneousMode: Boolean = false,
     startLatitude: Double? = null,
-    startLongitude: Double? = null
+    startLongitude: Double? = null,
+    explorationMode: String = "ONE_AREA"
 ) {
     val context = LocalContext.current
     var museumsChecked by remember { mutableStateOf(false) }
@@ -185,6 +188,7 @@ fun ActivityPreferencesScreen(
                         putExtra("isHungryNow", isHungryNow)
                         putExtra("isSpontaneousMode", isSpontaneousMode)
                         putExtra("activityTypes", selectedActivities.toTypedArray())
+                        putExtra("explorationMode", explorationMode)
                         if (startLatitude != null) putExtra("startLatitude", startLatitude)
                         if (startLongitude != null) putExtra("startLongitude", startLongitude)
                     }

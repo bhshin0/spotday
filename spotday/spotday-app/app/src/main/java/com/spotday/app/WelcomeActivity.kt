@@ -5,13 +5,17 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.spotday.app.model.ExplorationMode
 import com.spotday.app.ui.theme.SpotDayTheme
 
 class WelcomeActivity : ComponentActivity() {
@@ -38,10 +42,22 @@ fun WelcomeScreen() {
     var durationHours by remember { mutableStateOf(4f) } // For spontaneous mode
     var budget by remember { mutableStateOf(100) }
     var isHungryNow by remember { mutableStateOf(false) }
+    var explorationMode by remember { mutableStateOf(ExplorationMode.ONE_AREA) }
+    
+    // Calculate total hours for current time selection
+    val totalHours = if (isSpontaneousMode) {
+        durationHours.toInt()
+    } else {
+        (timeRange.endInclusive - timeRange.start).toInt()
+    }
+    
+    // Show exploration toggle when time window >= 6 hours
+    val showExplorationToggle = totalHours >= 6
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
@@ -127,6 +143,16 @@ fun WelcomeScreen() {
             )
         }
         
+        // Exploration mode toggle - only shown for 6+ hour windows
+        AnimatedVisibility(visible = showExplorationToggle) {
+            Column(modifier = Modifier.padding(top = 24.dp)) {
+                ExplorationModeToggle(
+                    selectedMode = explorationMode,
+                    onModeSelected = { explorationMode = it }
+                )
+            }
+        }
+        
         Spacer(modifier = Modifier.height(32.dp))
         
         Row(
@@ -201,6 +227,7 @@ fun WelcomeScreen() {
                         putExtra("totalBudget", budget)
                         putExtra("isHungryNow", isHungryNow)
                         putExtra("isSpontaneousMode", isSpontaneousMode)
+                        putExtra("explorationMode", explorationMode.name)
                         if (isSpontaneousMode) {
                             putExtra("startLatitude", startLat)
                             putExtra("startLongitude", startLng)
@@ -234,4 +261,47 @@ fun formatTime(hour: Int): String {
         else -> hour
     }
     return "$displayHour:00 $period"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExplorationModeToggle(
+    selectedMode: ExplorationMode,
+    onModeSelected: (ExplorationMode) -> Unit
+) {
+    Column {
+        Text(
+            text = "How do you want to explore?",
+            style = MaterialTheme.typography.titleMedium
+        )
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            SegmentedButton(
+                selected = selectedMode == ExplorationMode.ONE_AREA,
+                onClick = { onModeSelected(ExplorationMode.ONE_AREA) },
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+            ) {
+                Text("One area")
+            }
+            SegmentedButton(
+                selected = selectedMode == ExplorationMode.CITY_WIDE,
+                onClick = { onModeSelected(ExplorationMode.CITY_WIDE) },
+                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+            ) {
+                Text("See the city")
+            }
+        }
+        
+        Text(
+            text = if (selectedMode == ExplorationMode.ONE_AREA)
+                "Walkable day in one neighborhood"
+            else
+                "Visit highlights across town",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+    }
 } 

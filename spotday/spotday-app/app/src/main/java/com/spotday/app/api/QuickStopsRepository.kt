@@ -1,5 +1,6 @@
 package com.spotday.app.api
 
+import com.spotday.app.model.QuickStopType
 import com.spotday.app.model.Waypoint
 import kotlin.math.sqrt
 
@@ -8,13 +9,6 @@ import kotlin.math.sqrt
  * Includes coffee shops, photo spots, and notable viewpoints.
  */
 class QuickStopsRepository {
-    
-    enum class QuickStopType {
-        COFFEE,
-        PHOTO_SPOT,
-        VIEWPOINT,
-        STREET_ART
-    }
     
     data class QuickStop(
         val waypoint: Waypoint,

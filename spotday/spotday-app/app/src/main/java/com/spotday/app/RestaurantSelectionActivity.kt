@@ -28,6 +28,7 @@ class RestaurantSelectionActivity : ComponentActivity() {
         val selectedEventIds = intent.getStringArrayExtra("selectedEventIds") ?: arrayOf()
         val startLat = intent.getDoubleExtra("startLatitude", 0.0).takeIf { it != 0.0 }
         val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
+        val explorationMode = intent.getStringExtra("explorationMode") ?: "ONE_AREA"
         
         setContent {
             SpotDayTheme {
@@ -44,7 +45,8 @@ class RestaurantSelectionActivity : ComponentActivity() {
                         activityTypes = activityTypes.toList(),
                         selectedEventIds = selectedEventIds.toList(),
                         startLatitude = startLat,
-                        startLongitude = startLng
+                        startLongitude = startLng,
+                        explorationMode = explorationMode
                     )
                 }
             }
@@ -63,7 +65,8 @@ fun RestaurantSelectionScreen(
     activityTypes: List<String>,
     selectedEventIds: List<String> = emptyList(),
     startLatitude: Double? = null,
-    startLongitude: Double? = null
+    startLongitude: Double? = null,
+    explorationMode: String = "ONE_AREA"
 ) {
     val context = LocalContext.current
     var italianChecked by remember { mutableStateOf(false) }
@@ -395,6 +398,7 @@ fun RestaurantSelectionScreen(
                         putExtra("serviceStyles", selectedServiceStyles.toTypedArray())
                         putExtra("nightlifeTypes", selectedNightlifeTypes.toTypedArray())
                         putExtra("selectedEventIds", selectedEventIds.toTypedArray())
+                        putExtra("explorationMode", explorationMode)
                         if (startLatitude != null) putExtra("startLatitude", startLatitude)
                         if (startLongitude != null) putExtra("startLongitude", startLongitude)
                     }

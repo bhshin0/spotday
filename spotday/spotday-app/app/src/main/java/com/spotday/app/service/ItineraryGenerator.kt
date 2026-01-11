@@ -2,13 +2,17 @@ package com.spotday.app.service
 
 import android.util.Log
 import com.spotday.app.api.EventsRepository
+import com.spotday.app.api.NeighborhoodsRepository
 import com.spotday.app.api.PlacesRepository
 import com.spotday.app.api.QuickStopsRepository
 import com.spotday.app.api.ScenicRoutesRepository
 import com.spotday.app.model.Event
+import com.spotday.app.model.ExplorationMode
 import com.spotday.app.model.ItineraryStop
+import com.spotday.app.model.Neighborhood
 import com.spotday.app.model.Place
 import com.spotday.app.model.PlaceType
+import com.spotday.app.model.QuickStopType
 import com.spotday.app.model.ServiceStyle
 import com.spotday.app.model.StopType
 import com.spotday.app.model.Waypoint
@@ -22,7 +26,8 @@ class ItineraryGenerator(
     private val placesRepository: PlacesRepository,
     private val eventsRepository: EventsRepository = EventsRepository(),
     private val scenicRoutesRepository: ScenicRoutesRepository = ScenicRoutesRepository(),
-    private val quickStopsRepository: QuickStopsRepository = QuickStopsRepository()
+    private val quickStopsRepository: QuickStopsRepository = QuickStopsRepository(),
+    private val neighborhoodsRepository: NeighborhoodsRepository = NeighborhoodsRepository()
 ) {
 
     companion object {
@@ -72,6 +77,73 @@ class ItineraryGenerator(
             totalHours <= 10 -> 3 // Medium day: 2-3 activities
             else -> 4  // Long day: 3-4 activities
         }
+    }
+    
+    /**
+     * Select the "home" neighborhood for the itinerary based on:
+     * 1. User's starting location (if provided)
+     * 2. Best match for their preferences (food types, activity types)
+     * 3. Tier priority (Essential neighborhoods preferred for first-time visitors)
+     */
+    private fun selectHomeNeighborhood(
+        startLat: Double,
+        startLng: Double,
+        activityTypes: List<String>,
+        foodTypes: List<String>
+    ): Neighborhood? {
+        // Detect which city we're in
+        val city = neighborhoodsRepository.detectCity(startLat, startLng)
+        val cityId = city?.id ?: "san_francisco" // Default to SF
+        
+        // Option 1: Find nearest neighborhood to starting location
+        val nearestNeighborhood = neighborhoodsRepository.findNearestNeighborhood(cityId, startLat, startLng)
+        
+        // Option 2: Find best neighborhood for preferences
+        // This weights neighborhoods that are known for the user's chosen cuisines/activities
+        val preferenceMatches = mutableMapOf<String, Int>()
+        
+        for (foodType in foodTypes) {
+            val goodNeighborhoods = neighborhoodsRepository.getNeighborhoodsForActivity(cityId, foodType)
+            goodNeighborhoods.forEach { neighborhood ->
+                // Tier bonus: Essential neighborhoods get +2, Classic +1
+                val tierBonus = when (neighborhood.tier) {
+                    com.spotday.app.model.NeighborhoodTier.ESSENTIAL -> 2
+                    com.spotday.app.model.NeighborhoodTier.CLASSIC -> 1
+                    else -> 0
+                }
+                preferenceMatches[neighborhood.id] = preferenceMatches.getOrDefault(neighborhood.id, 0) + 1 + tierBonus
+            }
+        }
+        
+        for (activityType in activityTypes) {
+            val goodNeighborhoods = neighborhoodsRepository.getNeighborhoodsForActivity(cityId, activityType)
+            goodNeighborhoods.forEach { neighborhood ->
+                val tierBonus = when (neighborhood.tier) {
+                    com.spotday.app.model.NeighborhoodTier.ESSENTIAL -> 2
+                    com.spotday.app.model.NeighborhoodTier.CLASSIC -> 1
+                    else -> 0
+                }
+                preferenceMatches[neighborhood.id] = preferenceMatches.getOrDefault(neighborhood.id, 0) + 1 + tierBonus
+            }
+        }
+        
+        // If we have preference matches and nearestNeighborhood ranks well, use it
+        // Otherwise, use the highest-scoring neighborhood for preferences
+        if (preferenceMatches.isNotEmpty()) {
+            val bestByPreference = preferenceMatches.maxByOrNull { it.value }?.key
+            val nearestScore = preferenceMatches[nearestNeighborhood?.id] ?: 0
+            val bestScore = preferenceMatches[bestByPreference] ?: 0
+            
+            // If nearest neighborhood is at least 50% as good as best, use it (favor proximity)
+            if (nearestNeighborhood != null && nearestScore >= bestScore * 0.5) {
+                return nearestNeighborhood
+            }
+            
+            return bestByPreference?.let { neighborhoodsRepository.getNeighborhood(it) }
+        }
+        
+        // If no preferences, prefer Essential neighborhoods
+        return nearestNeighborhood ?: neighborhoodsRepository.getEssentialNeighborhoods(cityId).firstOrNull()
     }
     
     // Calculate distance between two points in kilometers using Haversine formula
@@ -432,9 +504,10 @@ class ItineraryGenerator(
         userStartLng: Double? = null,
         nightlifeTypes: List<String> = emptyList(),
         avoidOutdoor: Boolean = false,
-        selectedEventIds: List<String> = emptyList()
+        selectedEventIds: List<String> = emptyList(),
+        explorationMode: ExplorationMode = ExplorationMode.ONE_AREA
     ): List<ItineraryStop> {
-        Log.d("ItineraryGenerator", "Generating itinerary from $startHour to $endHour, budget: $$totalBudget, activities: $activityTypes, food: $foodTypes, serviceStyles: ${if (serviceStyles.isEmpty()) "ALL" else serviceStyles}, hungryNow: $isHungryNow, spontaneous: $isSpontaneousMode, nightlife: $nightlifeTypes, avoidOutdoor: $avoidOutdoor, events: ${selectedEventIds.size}")
+        Log.d("ItineraryGenerator", "Generating itinerary from $startHour to $endHour, budget: $$totalBudget, activities: $activityTypes, food: $foodTypes, serviceStyles: ${if (serviceStyles.isEmpty()) "ALL" else serviceStyles}, hungryNow: $isHungryNow, spontaneous: $isSpontaneousMode, nightlife: $nightlifeTypes, avoidOutdoor: $avoidOutdoor, events: ${selectedEventIds.size}, explorationMode: $explorationMode")
 
         val totalHours = endHour - startHour
         val budgetBuffer = (totalBudget * BUDGET_BUFFER_PERCENTAGE).toInt()
@@ -512,31 +585,6 @@ class ItineraryGenerator(
         
         Log.d("ItineraryGenerator", "Restaurants after style filtering: ${candidateRestaurants.size}/${allCandidateRestaurants.size}")
 
-        // Shuffle first for variety, then sort by:
-        // 1. Outdoor preference (indoor first if avoidOutdoor is true)
-        // 2. Rating (descending)
-        // 3. Cost (ascending)
-        val sortedActivities = candidateActivities
-            .shuffled()
-            .sortedWith(
-                compareBy<Place> { if (avoidOutdoor && it.isOutdoor) 1 else 0 }
-                    .thenByDescending { it.rating }
-                    .thenBy { it.estimatedCost }
-            )
-        
-        if (avoidOutdoor) {
-            val outdoorCount = candidateActivities.count { it.isOutdoor }
-            val indoorCount = candidateActivities.size - outdoorCount
-            Log.d("ItineraryGenerator", "Weather mode: Prioritizing indoor ($indoorCount indoor, $outdoorCount outdoor)")
-        }
-        
-        val sortedRestaurants = candidateRestaurants
-            .shuffled()
-            .sortedWith(
-                compareByDescending<Place> { it.rating }
-                    .thenBy { it.estimatedCost }
-            )
-
         // Build itinerary from timeline skeleton
         val itinerary = mutableListOf<ItineraryStop>()
         var currentCost = 0
@@ -591,6 +639,82 @@ class ItineraryGenerator(
         var totalDistance = 0.0
         
         Log.d("ItineraryGenerator", "Starting from location at ($currentLat, $currentLng)")
+        
+        // Determine "home" neighborhood for clustering
+        val homeNeighborhood = selectHomeNeighborhood(
+            startLat = initialLat,
+            startLng = initialLng,
+            activityTypes = activityTypes,
+            foodTypes = foodTypes
+        )
+        
+        val adjacentNeighborhoods = homeNeighborhood?.let { 
+            neighborhoodsRepository.getAdjacentNeighborhoods(it.id).map { n -> n.id }.toSet()
+        } ?: emptySet()
+        
+        Log.d("ItineraryGenerator", "Home neighborhood: ${homeNeighborhood?.name ?: "none"}, adjacent: $adjacentNeighborhoods, mode: $explorationMode")
+        
+        // Neighborhood scoring function
+        fun neighborhoodScore(place: Place): Int {
+            if (homeNeighborhood == null) return 0
+            
+            return when {
+                place.neighborhood == homeNeighborhood.id -> 50  // Same neighborhood: +50
+                place.neighborhood in adjacentNeighborhoods -> 20 // Adjacent: +20
+                else -> 0 // Other neighborhoods: no bonus
+            }
+        }
+        
+        // In ONE_AREA mode, filter to home + adjacent neighborhoods only
+        // In CITY_WIDE mode, allow all but score higher for nearby
+        fun filterByNeighborhood(places: List<Place>): List<Place> {
+            if (homeNeighborhood == null || explorationMode == ExplorationMode.CITY_WIDE) {
+                return places
+            }
+            
+            val allowedNeighborhoods = adjacentNeighborhoods + homeNeighborhood.id
+            val filtered = places.filter { place ->
+                place.neighborhood == null || place.neighborhood in allowedNeighborhoods
+            }
+            
+            // If filtering is too restrictive, fall back to all places
+            return if (filtered.size >= 5) filtered else places
+        }
+        
+        // Apply neighborhood filtering based on exploration mode
+        val filteredActivities = filterByNeighborhood(candidateActivities)
+        val filteredRestaurants = filterByNeighborhood(candidateRestaurants)
+        
+        Log.d("ItineraryGenerator", "After neighborhood filter: ${filteredActivities.size}/${candidateActivities.size} activities, ${filteredRestaurants.size}/${candidateRestaurants.size} restaurants")
+        
+        // Shuffle first for variety, then sort by:
+        // 1. Neighborhood score (higher = same/adjacent neighborhood)
+        // 2. Outdoor preference (indoor first if avoidOutdoor is true)
+        // 3. Rating (descending)
+        // 4. Cost (ascending)
+        val sortedActivities = filteredActivities
+            .shuffled()
+            .sortedWith(
+                compareByDescending<Place> { place -> neighborhoodScore(place) }
+                    .thenBy { place -> if (avoidOutdoor && place.isOutdoor) 1 else 0 }
+                    .thenByDescending { place -> place.rating }
+                    .thenBy { place -> place.estimatedCost }
+            )
+        
+        if (avoidOutdoor) {
+            val outdoorCount = filteredActivities.count { place -> place.isOutdoor }
+            val indoorCount = filteredActivities.size - outdoorCount
+            Log.d("ItineraryGenerator", "Weather mode: Prioritizing indoor ($indoorCount indoor, $outdoorCount outdoor)")
+        }
+        
+        // Sort restaurants by neighborhood score first, then quality
+        val sortedRestaurants = filteredRestaurants
+            .shuffled()
+            .sortedWith(
+                compareByDescending<Place> { place -> neighborhoodScore(place) }
+                    .thenByDescending { place -> place.rating }
+                    .thenBy { place -> place.estimatedCost }
+            )
         
         val calendar = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, startHour)
@@ -1006,7 +1130,8 @@ class ItineraryGenerator(
                                     quickStop.waypoint,
                                     currentStop.endTime,
                                     quickStop.durationMinutes,
-                                    calculateDistance(currentLat, currentLng, quickStop.waypoint.lat, quickStop.waypoint.lng)
+                                    calculateDistance(currentLat, currentLng, quickStop.waypoint.lat, quickStop.waypoint.lng),
+                                    quickStop.type
                                 )
                                 filledItinerary.add(quickStopItem)
                                 Log.d("ItineraryGenerator", "Added quick stop: ${quickStop.waypoint.name}")
@@ -1092,7 +1217,8 @@ class ItineraryGenerator(
         waypoint: Waypoint,
         afterTime: String,
         durationMinutes: Int,
-        distanceKm: Double
+        distanceKm: Double,
+        quickStopType: QuickStopType
     ): ItineraryStop {
         val calendar = Calendar.getInstance()
         calendar.time = timeFormat.parse(afterTime) ?: calendar.time
@@ -1110,7 +1236,8 @@ class ItineraryGenerator(
             distanceFromPreviousKm = distanceKm,
             transitEstimate = TransitHelper.estimateTransit(distanceKm),
             stopType = StopType.QUICK_STOP,
-            waypoint = waypoint
+            waypoint = waypoint,
+            quickStopType = quickStopType
         )
     }
     

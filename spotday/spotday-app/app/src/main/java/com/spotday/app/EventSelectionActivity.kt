@@ -34,6 +34,7 @@ class EventSelectionActivity : ComponentActivity() {
         val startLat = intent.getDoubleExtra("startLatitude", 0.0).takeIf { it != 0.0 }
         val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
         val activityTypes = intent.getStringArrayExtra("activityTypes")?.toList() ?: emptyList()
+        val explorationMode = intent.getStringExtra("explorationMode") ?: "ONE_AREA"
         
         setContent {
             SpotDayTheme {
@@ -49,7 +50,8 @@ class EventSelectionActivity : ComponentActivity() {
                         isSpontaneousMode = isSpontaneousMode,
                         startLatitude = startLat,
                         startLongitude = startLng,
-                        activityTypes = activityTypes
+                        activityTypes = activityTypes,
+                        explorationMode = explorationMode
                     )
                 }
             }
@@ -86,7 +88,8 @@ fun EventSelectionScreen(
     isSpontaneousMode: Boolean,
     startLatitude: Double?,
     startLongitude: Double?,
-    activityTypes: List<String>
+    activityTypes: List<String>,
+    explorationMode: String = "ONE_AREA"
 ) {
     val context = LocalContext.current
     var events by remember { mutableStateOf<List<Event>>(emptyList()) }
@@ -223,6 +226,7 @@ fun EventSelectionScreen(
                         putExtra("isSpontaneousMode", isSpontaneousMode)
                         putExtra("activityTypes", activityTypes.toTypedArray())
                         putExtra("selectedEventIds", selectedEventIds.toTypedArray())
+                        putExtra("explorationMode", explorationMode)
                         if (startLatitude != null) putExtra("startLatitude", startLatitude)
                         if (startLongitude != null) putExtra("startLongitude", startLongitude)
                     }

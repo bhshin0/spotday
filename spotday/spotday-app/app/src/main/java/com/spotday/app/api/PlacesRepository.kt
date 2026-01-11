@@ -15,9 +15,12 @@ import com.spotday.app.model.ServiceStyle
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 class PlacesRepository(private val context: Context) {
     private val placesClient: PlacesClient
+    private val neighborhoodsRepository = NeighborhoodsRepository()
 
     init {
         if (!Places.isInitialized()) {
@@ -28,6 +31,30 @@ class PlacesRepository(private val context: Context) {
 
     // San Francisco center coordinates
     private val SF_CENTER = LatLng(37.7749, -122.4194)
+    
+    /**
+     * Auto-assign neighborhood based on coordinates.
+     * Uses the city-aware neighborhood lookup.
+     */
+    private fun AppPlace.withNeighborhood(): AppPlace {
+        // Auto-detect city from coordinates and find nearest neighborhood
+        val city = neighborhoodsRepository.detectCity(this.lat, this.lng)
+        val neighborhood = if (city != null) {
+            neighborhoodsRepository.findNearestNeighborhood(city.id, this.lat, this.lng)
+        } else {
+            neighborhoodsRepository.findNearestNeighborhood(this.lat, this.lng)
+        }
+        return this.copy(neighborhood = neighborhood?.id)
+    }
+    
+    /**
+     * Apply both type defaults and neighborhood assignment.
+     */
+    private fun AppPlace.withAllDefaults(): AppPlace {
+        return this.withTypeDefaults().withNeighborhood()
+    }
+    
+    private fun List<AppPlace>.applyAllDefaults(): List<AppPlace> = map { it.withAllDefaults() }
     
     /**
      * Apply sensible default operating hours and outdoor flag based on PlaceType.
@@ -111,7 +138,7 @@ class PlacesRepository(private val context: Context) {
         }
     }
     
-    private fun List<AppPlace>.applyTypeDefaults(): List<AppPlace> = map { it.withTypeDefaults() }
+    private fun List<AppPlace>.applyTypeDefaults(): List<AppPlace> = map { it.withAllDefaults() }
 
     suspend fun searchMuseums(): List<AppPlace> {
         Log.d("PlacesRepository", "Searching for museums in SF")
@@ -175,7 +202,39 @@ class PlacesRepository(private val context: Context) {
             AppPlace("sf_arts_commission", "SF Arts Commission Gallery", PlaceType.MUSEUM, 37.7798, -122.4191, 4.3f, true, 1, 0),
             AppPlace("luggage_store", "Luggage Store Gallery", PlaceType.MUSEUM, 37.7851, -122.4080, 4.2f, true, 1, 0),
             AppPlace("catharine_clark", "Catharine Clark Gallery", PlaceType.MUSEUM, 37.7694, -122.4020, 4.4f, true, 1, 0),
-            AppPlace("fraenkel_gallery", "Fraenkel Gallery", PlaceType.MUSEUM, 37.7887, -122.4018, 4.5f, true, 1, 0)
+            AppPlace("fraenkel_gallery", "Fraenkel Gallery", PlaceType.MUSEUM, 37.7887, -122.4018, 4.5f, true, 1, 0),
+            
+            // Additional Neighborhood Galleries & Cultural Sites
+            // Mission
+            AppPlace("clarion_alley", "Clarion Alley Murals", PlaceType.MUSEUM, 37.7629, -122.4200, 4.7f, true, 1, 0),
+            AppPlace("gallery_16", "Gallery 16", PlaceType.MUSEUM, 37.7603, -122.4105, 4.3f, true, 1, 0),
+            AppPlace("mission_comics", "Mission: Comics & Art", PlaceType.MUSEUM, 37.7550, -122.4195, 4.2f, true, 1, 5),
+            
+            // Dogpatch
+            AppPlace("museum_3d", "Museum of 3D Illusions", PlaceType.MUSEUM, 37.7600, -122.3915, 4.4f, true, 2, 20),
+            AppPlace("dogpatch_studios", "Dogpatch Studios", PlaceType.MUSEUM, 37.7588, -122.3880, 4.3f, true, 1, 0),
+            
+            // Potrero Hill
+            AppPlace("anchor_brewing", "Anchor Brewing Museum", PlaceType.MUSEUM, 37.7620, -122.4003, 4.5f, true, 2, 15),
+            
+            // Hayes Valley
+            AppPlace("sf_jazz", "SF JAZZ Center", PlaceType.MUSEUM, 37.7762, -122.4208, 4.7f, true, 2, 20),
+            
+            // Lower Haight
+            AppPlace("bound_together", "Bound Together Bookstore", PlaceType.MUSEUM, 37.7702, -122.4485, 4.4f, true, 1, 0),
+            
+            // North Beach
+            AppPlace("city_lights", "City Lights Bookstore", PlaceType.MUSEUM, 37.7976, -122.4066, 4.7f, true, 1, 0),
+            AppPlace("kerouac_alley", "Jack Kerouac Alley", PlaceType.MUSEUM, 37.7976, -122.4070, 4.5f, true, 1, 0),
+            
+            // Inner Sunset
+            AppPlace("sf_botanical_east", "SF Botanical Garden - East Meadow", PlaceType.MUSEUM, 37.7685, -122.4705, 4.6f, true, 1, 5),
+            
+            // Embarcadero
+            AppPlace("ferry_artisan", "Ferry Building Artisan Showcase", PlaceType.MUSEUM, 37.7956, -122.3935, 4.5f, true, 1, 0),
+            
+            // Marina
+            AppPlace("palace_legion", "Palace of Fine Arts Theatre", PlaceType.MUSEUM, 37.8033, -122.4480, 4.6f, true, 2, 15)
         ).applyTypeDefaults()
     }
 
@@ -238,7 +297,33 @@ class PlacesRepository(private val context: Context) {
             AppPlace("mt_davidson", "Mount Davidson Park", PlaceType.PARK, 37.7382, -122.4550, 4.6f, true, 0, 0),
             AppPlace("lake_merced", "Lake Merced Park", PlaceType.PARK, 37.7167, -122.4871, 4.6f, true, 0, 0),
             AppPlace("stern_grove", "Stern Grove", PlaceType.PARK, 37.7290, -122.4743, 4.7f, true, 0, 0),
-            AppPlace("mount_sutro", "Mount Sutro Open Space", PlaceType.PARK, 37.7538, -122.4518, 4.5f, true, 0, 0)
+            AppPlace("mount_sutro", "Mount Sutro Open Space", PlaceType.PARK, 37.7538, -122.4518, 4.5f, true, 0, 0),
+            
+            // Additional Neighborhood Parks
+            // Hayes Valley / Lower Haight
+            AppPlace("patricia_green", "Patricia's Green", PlaceType.PARK, 37.7760, -122.4235, 4.5f, true, 0, 0),
+            AppPlace("duboce_park", "Duboce Park", PlaceType.PARK, 37.7692, -122.4331, 4.5f, true, 0, 0),
+            
+            // Noe Valley / Glen Park
+            AppPlace("douglass_park", "Douglass Playground", PlaceType.PARK, 37.7498, -122.4384, 4.4f, true, 0, 0),
+            AppPlace("upper_noe_rec", "Upper Noe Recreation Center", PlaceType.PARK, 37.7492, -122.4363, 4.4f, true, 0, 0),
+            AppPlace("billy_goat_hill", "Billy Goat Hill", PlaceType.PARK, 37.7420, -122.4355, 4.6f, true, 0, 0),
+            
+            // Potrero Hill
+            AppPlace("mckinley_square", "McKinley Square", PlaceType.PARK, 37.7616, -122.4032, 4.5f, true, 0, 0),
+            AppPlace("connecticut_friendship", "Connecticut Friendship Garden", PlaceType.PARK, 37.7578, -122.3971, 4.3f, true, 0, 0),
+            
+            // Inner Richmond
+            AppPlace("rossi_playground", "Rossi Playground", PlaceType.PARK, 37.7810, -122.4555, 4.3f, true, 0, 0),
+            AppPlace("mountain_lake_park", "Mountain Lake Park", PlaceType.PARK, 37.7876, -122.4690, 4.6f, true, 0, 0),
+            
+            // Russian Hill / North Beach
+            AppPlace("ina_coolbrith", "Ina Coolbrith Park", PlaceType.PARK, 37.7989, -122.4157, 4.5f, true, 0, 0),
+            AppPlace("pioneer_park", "Pioneer Park", PlaceType.PARK, 37.8024, -122.4061, 4.6f, true, 0, 0),
+            
+            // Dogpatch
+            AppPlace("esprit_park", "Esprit Park", PlaceType.PARK, 37.7614, -122.3893, 4.4f, true, 0, 0),
+            AppPlace("crane_cove", "Crane Cove Park", PlaceType.PARK, 37.7608, -122.3830, 4.5f, true, 0, 0)
         ).applyTypeDefaults()
     }
 
@@ -296,7 +381,20 @@ class PlacesRepository(private val context: Context) {
                     AppPlace("starbelly", "Starbelly", PlaceType.RESTAURANT, 37.7650, -122.4295, 4.4f, true, 2, 27),
                     // Outer Sunset
                     AppPlace("palinode", "Palinode", PlaceType.RESTAURANT, 37.7551, -122.4863, 4.2f, true, 2, 24),
-                    AppPlace("mozzeria", "Mozzeria", PlaceType.RESTAURANT, 37.7603, -122.4643, 4.6f, true, 2, 22)
+                    AppPlace("mozzeria", "Mozzeria", PlaceType.RESTAURANT, 37.7603, -122.4643, 4.6f, true, 2, 22),
+                    // Additional Italian - Dogpatch/Potrero
+                    AppPlace("flour_water_pasta", "Flour + Water Pasta Shop", PlaceType.RESTAURANT, 37.7618, -122.4089, 4.5f, true, 1, 18),
+                    AppPlace("plow", "Plow", PlaceType.RESTAURANT, 37.7590, -122.4011, 4.6f, true, 2, 24),
+                    // Additional Italian - Bernal Heights
+                    AppPlace("ragazza", "Ragazza", PlaceType.RESTAURANT, 37.7393, -122.4090, 4.4f, true, 2, 22),
+                    // Additional Italian - Glen Park
+                    AppPlace("glen_park_station", "Glen Park Station", PlaceType.RESTAURANT, 37.7348, -122.4336, 4.3f, true, 2, 20),
+                    // Additional Italian - Lower Haight
+                    AppPlace("uva_enoteca", "Uva Enoteca", PlaceType.RESTAURANT, 37.7717, -122.4298, 4.4f, true, 2, 26),
+                    // Additional Italian - Nob Hill
+                    AppPlace("frascati", "Frascati", PlaceType.RESTAURANT, 37.7930, -122.4180, 4.5f, true, 2, 28),
+                    // Additional Italian - Inner Richmond
+                    AppPlace("fiorella", "Fiorella", PlaceType.RESTAURANT, 37.7802, -122.4649, 4.5f, true, 2, 24)
                 )
             )
         }
@@ -348,7 +446,21 @@ class PlacesRepository(private val context: Context) {
                     // Excelsior
                     AppPlace("el_rincon_yucateco", "El Rincon Yucateco", PlaceType.RESTAURANT, 37.7248, -122.4289, 4.5f, true, 1, 14),
                     // Inner Richmond
-                    AppPlace("gordo", "Gordo Taqueria", PlaceType.RESTAURANT, 37.7814, -122.4614, 4.3f, true, 1, 13)
+                    AppPlace("gordo", "Gordo Taqueria", PlaceType.RESTAURANT, 37.7814, -122.4614, 4.3f, true, 1, 13),
+                    // Additional Mexican - Dogpatch
+                    AppPlace("papito_dogpatch", "Papito", PlaceType.RESTAURANT, 37.7585, -122.3895, 4.4f, true, 1, 15),
+                    // Additional Mexican - Glen Park
+                    AppPlace("sunflower_cafe", "Sunflower Cafe", PlaceType.RESTAURANT, 37.7347, -122.4338, 4.3f, true, 1, 14),
+                    // Additional Mexican - Lower Haight
+                    AppPlace("poc_chuc", "Poc Chuc", PlaceType.RESTAURANT, 37.7715, -122.4306, 4.4f, true, 2, 18),
+                    // Additional Mexican - Inner Sunset
+                    AppPlace("playa_azul", "Playa Azul", PlaceType.RESTAURANT, 37.7638, -122.4669, 4.3f, true, 1, 15),
+                    // Additional Mexican - Outer Mission
+                    AppPlace("el_metate", "El Metate", PlaceType.RESTAURANT, 37.7302, -122.4217, 4.5f, true, 1, 13),
+                    // Additional Mexican - Portola
+                    AppPlace("el_toreador", "El Toreador", PlaceType.RESTAURANT, 37.7220, -122.4065, 4.4f, true, 1, 14),
+                    // Additional Mexican - Haight
+                    AppPlace("taqueria_haight", "Taqueria Haight", PlaceType.RESTAURANT, 37.7698, -122.4482, 4.2f, true, 1, 12)
                 )
             )
         }
@@ -397,7 +509,27 @@ class PlacesRepository(private val context: Context) {
                     AppPlace("seven_hills", "Seven Hills", PlaceType.RESTAURANT, 37.8042, -122.4180, 4.4f, true, 2, 32),
                     // Dogpatch
                     AppPlace("piccino", "Piccino", PlaceType.RESTAURANT, 37.7602, -122.3921, 4.5f, true, 2, 22),
-                    AppPlace("serpentine", "Serpentine", PlaceType.RESTAURANT, 37.7607, -122.3937, 4.3f, true, 2, 24)
+                    AppPlace("serpentine", "Serpentine", PlaceType.RESTAURANT, 37.7607, -122.3937, 4.3f, true, 2, 24),
+                    // Additional American - Bernal Heights
+                    AppPlace("emmy_sausage", "Emmy's Spaghetti Shack", PlaceType.RESTAURANT, 37.7390, -122.4190, 4.4f, true, 2, 22),
+                    AppPlace("mish_mish", "Mish Mish", PlaceType.RESTAURANT, 37.7395, -122.4095, 4.3f, true, 2, 20),
+                    // Additional American - Glen Park
+                    AppPlace("glen_park_cantina", "Gialina Pizzeria", PlaceType.RESTAURANT, 37.7348, -122.4338, 4.5f, true, 2, 24),
+                    AppPlace("higher_ground", "Higher Ground Coffee", PlaceType.RESTAURANT, 37.7346, -122.4334, 4.4f, true, 1, 12),
+                    // Additional American - Lower Haight
+                    AppPlace("memphis_minnie", "Memphis Minnie's BBQ", PlaceType.RESTAURANT, 37.7720, -122.4301, 4.5f, true, 2, 22),
+                    AppPlace("maven", "Maven", PlaceType.RESTAURANT, 37.7713, -122.4295, 4.4f, true, 2, 26),
+                    // Additional American - Inner Sunset
+                    AppPlace("park_chow", "Park Chow", PlaceType.RESTAURANT, 37.7650, -122.4657, 4.4f, true, 2, 22),
+                    AppPlace("art_coffee", "Arizmendi 9th Ave", PlaceType.RESTAURANT, 37.7642, -122.4660, 4.6f, true, 1, 10),
+                    // Additional American - Cole Valley
+                    AppPlace("zazie_cole", "Zazie", PlaceType.RESTAURANT, 37.7650, -122.4479, 4.5f, true, 2, 24),
+                    // Additional American - Noe Valley
+                    AppPlace("contigo", "Contigo", PlaceType.RESTAURANT, 37.7510, -122.4318, 4.5f, true, 2, 28),
+                    AppPlace("fresca_noe", "Fresca", PlaceType.RESTAURANT, 37.7502, -122.4322, 4.4f, true, 2, 24),
+                    // Additional American - Potrero Hill
+                    AppPlace("just_for_you", "Just For You Cafe", PlaceType.RESTAURANT, 37.7588, -122.3880, 4.5f, true, 1, 18),
+                    AppPlace("farley_sf", "Farley's", PlaceType.RESTAURANT, 37.7605, -122.4015, 4.4f, true, 1, 12)
                 )
             )
         }
@@ -441,7 +573,26 @@ class PlacesRepository(private val context: Context) {
                     AppPlace("ramen_underground", "Ramen Underground", PlaceType.RESTAURANT, 37.7848, -122.4009, 4.3f, true, 1, 14),
                     // Hayes Valley
                     AppPlace("souvla", "Souvla", PlaceType.RESTAURANT, 37.7756, -122.4248, 4.5f, true, 1, 16),
-                    AppPlace("namu_gaji", "Namu Gaji", PlaceType.RESTAURANT, 37.7763, -122.4244, 4.4f, true, 2, 22)
+                    AppPlace("namu_gaji", "Namu Gaji", PlaceType.RESTAURANT, 37.7763, -122.4244, 4.4f, true, 2, 22),
+                    // Additional Asian - Outer Richmond
+                    AppPlace("good_luck_dim", "Good Luck Dim Sum", PlaceType.RESTAURANT, 37.7820, -122.4715, 4.5f, true, 1, 12),
+                    AppPlace("kingdom_dumpling", "Kingdom of Dumpling", PlaceType.RESTAURANT, 37.7818, -122.4695, 4.4f, true, 1, 14),
+                    AppPlace("spices_richmond", "Spices!", PlaceType.RESTAURANT, 37.7802, -122.4632, 4.5f, true, 1, 16),
+                    // Additional Asian - Outer Sunset
+                    AppPlace("san_tung", "San Tung", PlaceType.RESTAURANT, 37.7644, -122.4689, 4.6f, true, 1, 18),
+                    AppPlace("old_mandarin", "Old Mandarin Islamic", PlaceType.RESTAURANT, 37.7605, -122.4700, 4.5f, true, 1, 16),
+                    AppPlace("hook_fish", "Hook Fish Co", PlaceType.RESTAURANT, 37.7608, -122.5092, 4.6f, true, 2, 20),
+                    // Additional Asian - Portola
+                    AppPlace("lers_ros", "Lers Ros Thai", PlaceType.RESTAURANT, 37.7290, -122.4060, 4.5f, true, 1, 16),
+                    // Additional Asian - Lower Haight
+                    AppPlace("thep_phanom_haight", "Thep Phanom", PlaceType.RESTAURANT, 37.7732, -122.4296, 4.4f, true, 2, 22),
+                    // Additional Asian - Castro
+                    AppPlace("sushi_zone", "Sushi Zone", PlaceType.RESTAURANT, 37.7612, -122.4356, 4.3f, true, 2, 24),
+                    // Additional Asian - Nob Hill
+                    AppPlace("oriental_pearl", "Oriental Pearl", PlaceType.RESTAURANT, 37.7915, -122.4105, 4.3f, true, 2, 22),
+                    // Additional Asian - Tenderloin
+                    AppPlace("bodega_sf", "Bodega", PlaceType.RESTAURANT, 37.7843, -122.4105, 4.4f, true, 2, 24),
+                    AppPlace("tu_lan", "Tu Lan", PlaceType.RESTAURANT, 37.7812, -122.4105, 4.3f, true, 1, 12)
                 )
             )
         }

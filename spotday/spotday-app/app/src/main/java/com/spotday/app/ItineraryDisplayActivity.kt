@@ -31,8 +31,11 @@ import com.spotday.app.model.Event
 import com.spotday.app.model.EventType
 import com.spotday.app.model.ItineraryStop
 import com.spotday.app.model.PlaceType
+import com.spotday.app.model.QuickStopType
 import com.spotday.app.model.StopType
 import com.spotday.app.model.TransitEstimate
+import com.spotday.app.model.ExplorationMode
+import com.spotday.app.api.NeighborhoodsRepository
 import com.spotday.app.service.ItineraryGenerator
 import com.spotday.app.ui.theme.SpotDayTheme
 import com.spotday.app.util.TransitHelper
@@ -60,8 +63,10 @@ class ItineraryDisplayActivity : ComponentActivity() {
         val selectedEventIds = intent.getStringArrayExtra("selectedEventIds")?.toList() ?: emptyList()
         val startLat = intent.getDoubleExtra("startLatitude", 0.0).takeIf { it != 0.0 }
         val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
+        val explorationModeStr = intent.getStringExtra("explorationMode") ?: "ONE_AREA"
+        val explorationMode = try { ExplorationMode.valueOf(explorationModeStr) } catch (e: Exception) { ExplorationMode.ONE_AREA }
         
-        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode, activities=$activityTypes, food=$foodTypes, styles=${if (serviceStyles.isEmpty()) "ALL" else serviceStyles}, nightlife=$nightlifeTypes, events=${selectedEventIds.size}")
+        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode, activities=$activityTypes, food=$foodTypes, styles=${if (serviceStyles.isEmpty()) "ALL" else serviceStyles}, nightlife=$nightlifeTypes, events=${selectedEventIds.size}, explorationMode=$explorationMode")
         if (startLat != null && startLng != null) {
             Log.d("ItineraryDisplay", "Starting location: ($startLat, $startLng)")
         }
@@ -84,7 +89,8 @@ class ItineraryDisplayActivity : ComponentActivity() {
                         foodTypes = foodTypes,
                         serviceStyles = serviceStyles,
                         nightlifeTypes = nightlifeTypes,
-                        selectedEventIds = selectedEventIds
+                        selectedEventIds = selectedEventIds,
+                        explorationMode = explorationMode
                     )
                 }
             }
@@ -105,6 +111,7 @@ class ItineraryViewModel(
     private val serviceStyles: List<String>,
     private val nightlifeTypes: List<String>,
     private val selectedEventIds: List<String>,
+    private val explorationMode: ExplorationMode,
     placesRepository: PlacesRepository
 ) : ViewModel() {
     
@@ -160,7 +167,8 @@ class ItineraryViewModel(
                         userStartLng = startLongitude,
                         nightlifeTypes = nightlifeTypes,
                         avoidOutdoor = avoidOutdoorParam,
-                        selectedEventIds = selectedEventIds
+                        selectedEventIds = selectedEventIds,
+                        explorationMode = explorationMode
                     )
                 }
                 Log.d("ItineraryViewModel", "Itinerary generated with ${itinerary.size} stops")
@@ -187,7 +195,8 @@ fun ItineraryDisplayScreen(
     foodTypes: List<String>,
     serviceStyles: List<String> = emptyList(),
     nightlifeTypes: List<String> = emptyList(),
-    selectedEventIds: List<String> = emptyList()
+    selectedEventIds: List<String> = emptyList(),
+    explorationMode: ExplorationMode = ExplorationMode.ONE_AREA
 ) {
     val context = LocalContext.current
     val placesRepository = remember { PlacesRepository(context) }
@@ -209,6 +218,7 @@ fun ItineraryDisplayScreen(
                     serviceStyles,
                     nightlifeTypes,
                     selectedEventIds,
+                    explorationMode,
                     placesRepository
                 ) as T
             }
@@ -416,8 +426,24 @@ fun ItineraryTimeline(
         Text(
             text = "Your Itinerary",
             style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 8.dp)
         )
+        
+        // Show the primary neighborhood focus
+        val primaryNeighborhood = remember(itinerary) {
+            getPrimaryNeighborhood(itinerary)
+        }
+        
+        if (primaryNeighborhood != null) {
+            Text(
+                text = "📍 Focused on: $primaryNeighborhood",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        } else {
+            Spacer(modifier = Modifier.height(8.dp))
+        }
         
         if (itinerary.isEmpty()) {
             Text(
@@ -721,6 +747,15 @@ fun WaypointCard(stop: ItineraryStop) {
 
 @Composable
 fun QuickStopCard(stop: ItineraryStop) {
+    // Get appropriate icon based on quick stop type
+    val icon = when (stop.quickStopType) {
+        QuickStopType.COFFEE -> "☕"
+        QuickStopType.PHOTO_SPOT -> "📸"
+        QuickStopType.VIEWPOINT -> "🌁"
+        QuickStopType.STREET_ART -> "🎨"
+        null -> "☕" // Default fallback
+    }
+    
     // Compact card for coffee/photo breaks
     Card(
         modifier = Modifier
@@ -739,7 +774,7 @@ fun QuickStopCard(stop: ItineraryStop) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "☕",
+                text = icon,
                 style = MaterialTheme.typography.titleMedium
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -834,6 +869,34 @@ private fun getEventTypeLabel(eventType: EventType): String {
         EventType.CLASS_WORKSHOP -> "Class/Workshop"
     }
 }
+
+/**
+ * Determines the primary neighborhood from the itinerary by finding the most common one.
+ */
+private fun getPrimaryNeighborhood(itinerary: List<ItineraryStop>): String? {
+    val neighborhoodsRepo = NeighborhoodsRepository()
+    
+    // Count neighborhoods from main stops (not waypoints or quick stops)
+    val neighborhoodCounts = itinerary
+        .filter { it.stopType == StopType.MAIN }
+        .mapNotNull { it.place?.neighborhood }
+        .groupingBy { it }
+        .eachCount()
+    
+    if (neighborhoodCounts.isEmpty()) return null
+    
+    // Get the most common neighborhood ID
+    val primaryNeighborhoodId = neighborhoodCounts.maxByOrNull { it.value }?.key ?: return null
+    
+    // Convert ID to display name
+    return neighborhoodsRepo.getNeighborhood(primaryNeighborhoodId)?.name ?: primaryNeighborhoodId.replace("_", " ").capitalizeWords()
+}
+
+/**
+ * Capitalize each word in a string (e.g., "mission_district" -> "Mission District")
+ */
+private fun String.capitalizeWords(): String = 
+    split(" ", "_").joinToString(" ") { it.lowercase().replaceFirstChar { c -> c.uppercase() } }
 
 @Composable
 fun WeatherBanner(
