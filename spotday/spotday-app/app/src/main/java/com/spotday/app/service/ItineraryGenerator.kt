@@ -3,11 +3,15 @@ package com.spotday.app.service
 import android.util.Log
 import com.spotday.app.api.EventsRepository
 import com.spotday.app.api.PlacesRepository
+import com.spotday.app.api.QuickStopsRepository
+import com.spotday.app.api.ScenicRoutesRepository
 import com.spotday.app.model.Event
 import com.spotday.app.model.ItineraryStop
 import com.spotday.app.model.Place
 import com.spotday.app.model.PlaceType
 import com.spotday.app.model.ServiceStyle
+import com.spotday.app.model.StopType
+import com.spotday.app.model.Waypoint
 import com.spotday.app.util.TransitHelper
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -16,7 +20,9 @@ import kotlin.math.*
 
 class ItineraryGenerator(
     private val placesRepository: PlacesRepository,
-    private val eventsRepository: EventsRepository = EventsRepository()
+    private val eventsRepository: EventsRepository = EventsRepository(),
+    private val scenicRoutesRepository: ScenicRoutesRepository = ScenicRoutesRepository(),
+    private val quickStopsRepository: QuickStopsRepository = QuickStopsRepository()
 ) {
 
     companion object {
@@ -821,16 +827,22 @@ class ItineraryGenerator(
             }
         }
 
-        Log.d("ItineraryGenerator", "Generated itinerary with ${itinerary.size} stops")
+        Log.d("ItineraryGenerator", "Generated itinerary with ${itinerary.size} stops (before gap filling)")
         Log.d("ItineraryGenerator", "Total cost: $$currentCost (budget: $$totalBudget)")
         Log.d("ItineraryGenerator", "Total travel distance: ${"%.2f".format(totalDistance)} km")
         
+        // Fill gaps with quick stops, scenic routes, or free time
+        val filledItinerary = fillGaps(itinerary.toList())
+        
         // Log individual stops with distances for debugging
-        itinerary.forEachIndexed { index, stop ->
-            Log.d("ItineraryGenerator", "Stop ${index + 1}: ${stop.place.name} at (${stop.place.lat}, ${stop.place.lng})")
+        filledItinerary.forEachIndexed { index, stop ->
+            val stopName = stop.place?.name ?: stop.waypoint?.name ?: stop.event?.name ?: "Free Time"
+            Log.d("ItineraryGenerator", "Stop ${index + 1} (${stop.stopType}): $stopName")
         }
         
-        return itinerary
+        Log.d("ItineraryGenerator", "Final itinerary: ${filledItinerary.size} stops (after gap filling)")
+        
+        return filledItinerary
     }
 
     private fun createStop(
@@ -947,6 +959,210 @@ class ItineraryGenerator(
         } else {
             getDuration(place.type)
         }
+    }
+    
+    /**
+     * Fill gaps in the itinerary with quick stops, scenic routes, or free time.
+     * 
+     * Gap handling strategy:
+     * - Gaps > 45 min: Insert quick stop (coffee, photo spot)
+     * - Gaps 30-45 min: Try scenic route if available, else free time
+     * - Gaps 15-30 min: Label as "free time to explore"
+     * - Gaps < 15 min: Acceptable buffer, no action
+     */
+    private fun fillGaps(itinerary: List<ItineraryStop>): List<ItineraryStop> {
+        if (itinerary.size < 2) return itinerary
+        
+        val filledItinerary = mutableListOf<ItineraryStop>()
+        val usedQuickStops = mutableSetOf<String>()
+        
+        for (i in itinerary.indices) {
+            val currentStop = itinerary[i]
+            filledItinerary.add(currentStop)
+            
+            // Check for gap before next stop
+            if (i < itinerary.size - 1) {
+                val nextStop = itinerary[i + 1]
+                val gapMinutes = calculateGapMinutes(currentStop.endTime, nextStop.startTime)
+                
+                if (gapMinutes > 15) {
+                    val currentLat = currentStop.place?.lat ?: currentStop.event?.venueLatitude ?: 37.7749
+                    val currentLng = currentStop.place?.lng ?: currentStop.event?.venueLongitude ?: -122.4194
+                    val nextLat = nextStop.place?.lat ?: nextStop.event?.venueLatitude ?: 37.7749
+                    val nextLng = nextStop.place?.lng ?: nextStop.event?.venueLongitude ?: -122.4194
+                    
+                    Log.d("ItineraryGenerator", "Found gap of $gapMinutes min between ${currentStop.place?.name ?: "event"} and ${nextStop.place?.name ?: "event"}")
+                    
+                    when {
+                        gapMinutes > 45 -> {
+                            // Try to insert a quick stop
+                            val quickStop = quickStopsRepository.findStopForGap(
+                                currentLat, currentLng, gapMinutes - 15, usedQuickStops
+                            )
+                            
+                            if (quickStop != null) {
+                                usedQuickStops.add(quickStop.waypoint.name)
+                                val quickStopItem = createQuickStop(
+                                    quickStop.waypoint,
+                                    currentStop.endTime,
+                                    quickStop.durationMinutes,
+                                    calculateDistance(currentLat, currentLng, quickStop.waypoint.lat, quickStop.waypoint.lng)
+                                )
+                                filledItinerary.add(quickStopItem)
+                                Log.d("ItineraryGenerator", "Added quick stop: ${quickStop.waypoint.name}")
+                            } else {
+                                // No quick stop available, add free time
+                                val freeTime = createFreeTime(
+                                    currentStop.endTime,
+                                    gapMinutes,
+                                    quickStopsRepository.getNeighborhoodName(currentLat, currentLng)
+                                )
+                                filledItinerary.add(freeTime)
+                                Log.d("ItineraryGenerator", "Added free time: $gapMinutes min")
+                            }
+                        }
+                        gapMinutes in 30..45 -> {
+                            // Try scenic route, else add waypoints or free time
+                            val scenicRoute = scenicRoutesRepository.findScenicRoute(
+                                currentLat, currentLng, nextLat, nextLng
+                            )
+                            
+                            if (scenicRoute != null && scenicRoute.waypoints.isNotEmpty()) {
+                                // Add waypoint stops for scenic route
+                                for (waypoint in scenicRoute.waypoints) {
+                                    val waypointStop = createWaypointStop(
+                                        waypoint,
+                                        currentStop.endTime,
+                                        scenicRoute.description
+                                    )
+                                    filledItinerary.add(waypointStop)
+                                }
+                                Log.d("ItineraryGenerator", "Added scenic route: ${scenicRoute.description}")
+                            } else {
+                                // Add free time
+                                val freeTime = createFreeTime(
+                                    currentStop.endTime,
+                                    gapMinutes,
+                                    quickStopsRepository.getNeighborhoodName(currentLat, currentLng)
+                                )
+                                filledItinerary.add(freeTime)
+                                Log.d("ItineraryGenerator", "Added free time: $gapMinutes min")
+                            }
+                        }
+                        gapMinutes in 16..29 -> {
+                            // Short gap - just add free time
+                            val freeTime = createFreeTime(
+                                currentStop.endTime,
+                                gapMinutes,
+                                quickStopsRepository.getNeighborhoodName(currentLat, currentLng)
+                            )
+                            filledItinerary.add(freeTime)
+                            Log.d("ItineraryGenerator", "Added short free time: $gapMinutes min")
+                        }
+                    }
+                }
+            }
+        }
+        
+        return filledItinerary
+    }
+    
+    /**
+     * Calculate gap in minutes between two times.
+     */
+    private fun calculateGapMinutes(endTime: String, startTime: String): Int {
+        return try {
+            val endCal = Calendar.getInstance()
+            val startCal = Calendar.getInstance()
+            endCal.time = timeFormat.parse(endTime) ?: return 0
+            startCal.time = timeFormat.parse(startTime) ?: return 0
+            
+            val diffMillis = startCal.timeInMillis - endCal.timeInMillis
+            (diffMillis / (1000 * 60)).toInt()
+        } catch (e: Exception) {
+            Log.e("ItineraryGenerator", "Error calculating gap", e)
+            0
+        }
+    }
+    
+    /**
+     * Create a quick stop (coffee, photo spot, etc).
+     */
+    private fun createQuickStop(
+        waypoint: Waypoint,
+        afterTime: String,
+        durationMinutes: Int,
+        distanceKm: Double
+    ): ItineraryStop {
+        val calendar = Calendar.getInstance()
+        calendar.time = timeFormat.parse(afterTime) ?: calendar.time
+        calendar.add(Calendar.MINUTE, 5) // Small buffer
+        
+        val startTime = timeFormat.format(calendar.time)
+        calendar.add(Calendar.MINUTE, durationMinutes)
+        val endTime = timeFormat.format(calendar.time)
+        
+        return ItineraryStop(
+            place = null,
+            startTime = startTime,
+            endTime = endTime,
+            durationMinutes = durationMinutes,
+            distanceFromPreviousKm = distanceKm,
+            transitEstimate = TransitHelper.estimateTransit(distanceKm),
+            stopType = StopType.QUICK_STOP,
+            waypoint = waypoint
+        )
+    }
+    
+    /**
+     * Create a waypoint for scenic routes.
+     */
+    private fun createWaypointStop(
+        waypoint: Waypoint,
+        afterTime: String,
+        routeDescription: String
+    ): ItineraryStop {
+        val calendar = Calendar.getInstance()
+        calendar.time = timeFormat.parse(afterTime) ?: calendar.time
+        
+        val startTime = timeFormat.format(calendar.time)
+        calendar.add(Calendar.MINUTE, 5) // Brief pass-by
+        val endTime = timeFormat.format(calendar.time)
+        
+        return ItineraryStop(
+            place = null,
+            startTime = startTime,
+            endTime = endTime,
+            durationMinutes = 5,
+            stopType = StopType.WAYPOINT,
+            waypoint = waypoint,
+            neighborhoodName = routeDescription
+        )
+    }
+    
+    /**
+     * Create a free time / exploration period.
+     */
+    private fun createFreeTime(
+        afterTime: String,
+        durationMinutes: Int,
+        neighborhoodName: String
+    ): ItineraryStop {
+        val calendar = Calendar.getInstance()
+        calendar.time = timeFormat.parse(afterTime) ?: calendar.time
+        
+        val startTime = timeFormat.format(calendar.time)
+        calendar.add(Calendar.MINUTE, durationMinutes)
+        val endTime = timeFormat.format(calendar.time)
+        
+        return ItineraryStop(
+            place = null,
+            startTime = startTime,
+            endTime = endTime,
+            durationMinutes = durationMinutes,
+            stopType = StopType.FREE_TIME,
+            neighborhoodName = neighborhoodName
+        )
     }
 }
 

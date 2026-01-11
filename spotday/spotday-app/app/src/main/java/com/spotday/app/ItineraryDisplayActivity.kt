@@ -31,6 +31,7 @@ import com.spotday.app.model.Event
 import com.spotday.app.model.EventType
 import com.spotday.app.model.ItineraryStop
 import com.spotday.app.model.PlaceType
+import com.spotday.app.model.StopType
 import com.spotday.app.model.TransitEstimate
 import com.spotday.app.service.ItineraryGenerator
 import com.spotday.app.ui.theme.SpotDayTheme
@@ -322,40 +323,75 @@ fun ItineraryMap(itinerary: List<ItineraryStop>) {
         position = CameraPosition.fromLatLngZoom(SF_CENTER, 12f)
     }
     
+    // Separate main stops from waypoints/quick stops for different rendering
+    val mainStops = itinerary.filter { it.stopType == StopType.MAIN }
+    val waypointStops = itinerary.filter { it.stopType == StopType.WAYPOINT || it.stopType == StopType.QUICK_STOP }
+    
     GoogleMap(
         modifier = Modifier.fillMaxSize(),
         cameraPositionState = cameraPositionState,
         properties = MapProperties(
             isMyLocationEnabled = false,
-            // Reduce map complexity for better performance
             isTrafficEnabled = false,
             isBuildingEnabled = false
         ),
         uiSettings = MapUiSettings(
             zoomControlsEnabled = true,
-            // Disable expensive gestures on slow emulators
             rotationGesturesEnabled = false,
             tiltGesturesEnabled = false
         )
     ) {
-        // Add markers for each stop
-        itinerary.forEach { stop ->
-            val position = LatLng(stop.place.lat, stop.place.lng)
+        // Add numbered markers for main stops
+        var mainIndex = 1
+        mainStops.forEach { stop ->
+            val lat = stop.place?.lat ?: stop.event?.venueLatitude ?: return@forEach
+            val lng = stop.place?.lng ?: stop.event?.venueLongitude ?: return@forEach
+            val name = stop.place?.name ?: stop.event?.name ?: "Stop"
+            val position = LatLng(lat, lng)
+            
             Marker(
                 state = MarkerState(position = position),
-                title = stop.place.name,
+                title = "${mainIndex}. $name",
                 snippet = "${stop.startTime} - ${stop.endTime}"
+            )
+            mainIndex++
+        }
+        
+        // Add small circles for waypoints and quick stops
+        waypointStops.forEach { stop ->
+            val lat = stop.waypoint?.lat ?: return@forEach
+            val lng = stop.waypoint?.lng ?: return@forEach
+            val position = LatLng(lat, lng)
+            
+            Circle(
+                center = position,
+                radius = 40.0, // Small circle in meters
+                fillColor = if (stop.stopType == StopType.QUICK_STOP) 
+                    Color(0x99E8DEF8) else Color(0x99CCCCCC),
+                strokeColor = Color.White,
+                strokeWidth = 2f
             )
         }
         
-        // Draw polyline connecting stops
+        // Draw polylines connecting all stops
         if (itinerary.size > 1) {
-            val points = itinerary.map { LatLng(it.place.lat, it.place.lng) }
-            Polyline(
-                points = points,
-                color = Color(0xFF6650A4),
-                width = 10f
-            )
+            // Build list of all positions (main stops and waypoints)
+            val allPositions = itinerary.mapNotNull { stop ->
+                when {
+                    stop.place != null -> LatLng(stop.place.lat, stop.place.lng)
+                    stop.event != null -> LatLng(stop.event.venueLatitude, stop.event.venueLongitude)
+                    stop.waypoint != null -> LatLng(stop.waypoint.lat, stop.waypoint.lng)
+                    else -> null
+                }
+            }
+            
+            if (allPositions.size > 1) {
+                Polyline(
+                    points = allPositions,
+                    color = Color(0xFF6650A4),
+                    width = 8f
+                )
+            }
         }
     }
 }
@@ -504,8 +540,20 @@ fun BudgetSummaryCard(budget: Int, estimatedCost: Int) {
 
 @Composable
 fun ItineraryStopCard(stop: ItineraryStop) {
-    val isNightlife = stop.place.type == PlaceType.NIGHTLIFE
+    // Handle different stop types
+    when (stop.stopType) {
+        StopType.MAIN -> MainStopCard(stop)
+        StopType.WAYPOINT -> WaypointCard(stop)
+        StopType.QUICK_STOP -> QuickStopCard(stop)
+        StopType.FREE_TIME -> FreeTimeCard(stop)
+    }
+}
+
+@Composable
+fun MainStopCard(stop: ItineraryStop) {
+    val isNightlife = stop.place?.type == PlaceType.NIGHTLIFE
     val isEvent = stop.event != null
+    val placeName = stop.place?.name ?: stop.event?.name ?: "Unknown"
     
     Card(
         modifier = Modifier
@@ -531,7 +579,6 @@ fun ItineraryStopCard(stop: ItineraryStop) {
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Show appropriate emoji based on type
                 Text(
                     text = when {
                         isEvent -> "${getEventTypeEmoji(stop.event!!.eventType)} "
@@ -541,7 +588,7 @@ fun ItineraryStopCard(stop: ItineraryStop) {
                     style = MaterialTheme.typography.titleLarge
                 )
                 Text(
-                    text = stop.place.name,
+                    text = placeName,
                     style = MaterialTheme.typography.titleLarge,
                     color = when {
                         isEvent -> MaterialTheme.colorScheme.onSecondaryContainer
@@ -551,7 +598,6 @@ fun ItineraryStopCard(stop: ItineraryStop) {
                 )
             }
             
-            // Show venue name for events
             if (isEvent && stop.event != null) {
                 Text(
                     text = "@ ${stop.event.venueName}",
@@ -575,15 +621,17 @@ fun ItineraryStopCard(stop: ItineraryStop) {
                 Text(
                     text = when {
                         isEvent -> getEventTypeLabel(stop.event!!.eventType)
-                        else -> when (stop.place.type) {
-                            PlaceType.MUSEUM -> "Museum"
-                            PlaceType.PARK -> "Park"
-                            PlaceType.RESTAURANT -> "Restaurant"
-                            PlaceType.WATERFRONT -> "Waterfront"
-                            PlaceType.HISTORIC_SITE -> "Historic Site"
-                            PlaceType.SHOPPING -> "Shopping"
-                            PlaceType.NIGHTLIFE -> "Nightlife"
-                        }
+                        else -> stop.place?.type?.let { type ->
+                            when (type) {
+                                PlaceType.MUSEUM -> "Museum"
+                                PlaceType.PARK -> "Park"
+                                PlaceType.RESTAURANT -> "Restaurant"
+                                PlaceType.WATERFRONT -> "Waterfront"
+                                PlaceType.HISTORIC_SITE -> "Historic Site"
+                                PlaceType.SHOPPING -> "Shopping"
+                                PlaceType.NIGHTLIFE -> "Nightlife"
+                            }
+                        } ?: ""
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = when {
@@ -599,7 +647,7 @@ fun ItineraryStopCard(stop: ItineraryStop) {
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!isEvent) {
+                if (!isEvent && stop.place != null) {
                     Text(
                         text = "⭐ ${stop.place.rating}",
                         style = MaterialTheme.typography.bodyMedium,
@@ -609,23 +657,23 @@ fun ItineraryStopCard(stop: ItineraryStop) {
                 }
                 
                 Text(
-                    text = "${stop.durationMinutes} minutes",
+                    text = "${stop.durationMinutes} min",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 
-                Spacer(modifier = Modifier.width(16.dp))
+                if (stop.place != null) {
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = if (stop.place.estimatedCost > 0) "$${stop.place.estimatedCost}" else "Free",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (stop.place.estimatedCost > 0)
+                            MaterialTheme.colorScheme.tertiary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 
-                Text(
-                    text = if (stop.place.estimatedCost > 0) "$$${stop.place.estimatedCost}" else "Free",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (stop.place.estimatedCost > 0)
-                        MaterialTheme.colorScheme.tertiary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                
-                // Show "Fixed" badge for events
                 if (isEvent) {
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(
@@ -635,6 +683,130 @@ fun ItineraryStopCard(stop: ItineraryStop) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun WaypointCard(stop: ItineraryStop) {
+    // Smaller, muted card for scenic pass-through points
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp, horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "◇",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.outline
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(
+                text = stop.waypoint?.name ?: "Scenic Point",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            stop.waypoint?.description?.let { desc ->
+                Text(
+                    text = desc,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun QuickStopCard(stop: ItineraryStop) {
+    // Compact card for coffee/photo breaks
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "☕",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stop.waypoint?.name ?: "Quick Break",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                stop.waypoint?.description?.let { desc ->
+                    Text(
+                        text = desc,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
+            Text(
+                text = "${stop.durationMinutes} min",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+    }
+}
+
+@Composable
+fun FreeTimeCard(stop: ItineraryStop) {
+    // Card for exploration/free time periods
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "🚶",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Free time to explore",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = stop.neighborhoodName?.let { "Explore $it" } ?: "Wander and discover",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+            Text(
+                text = "${stop.durationMinutes} min",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
         }
     }
 }

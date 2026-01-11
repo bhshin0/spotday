@@ -26,6 +26,29 @@ enum class ServiceStyle {
     FORMAL      // 90 min - fine dining, upscale (dinner only)
 }
 
+enum class StopType {
+    MAIN,           // Primary itinerary stop (numbered pin)
+    WAYPOINT,       // Scenic pass-through point (small dot)
+    QUICK_STOP,     // Coffee/photo break (small icon)
+    FREE_TIME       // Exploration period (no pin, just suggestion)
+}
+
+data class Waypoint(
+    val name: String,
+    val lat: Double,
+    val lng: Double,
+    val description: String? = null  // "Pass by Saints Peter & Paul Church"
+)
+
+data class ScenicRoute(
+    val id: String,
+    val fromArea: String,           // e.g., "north_beach"
+    val toArea: String,             // e.g., "chinatown"
+    val waypoints: List<Waypoint>,
+    val description: String,        // "Walk through Washington Square..."
+    val addedMinutes: Int           // Extra time vs direct route
+)
+
 data class Event(
     val id: String,
     val name: String,
@@ -67,13 +90,17 @@ data class TransitEstimate(
 )
 
 data class ItineraryStop(
-    val place: Place,
+    val place: Place? = null,       // Nullable for free time / waypoint-only stops
     val startTime: String,
     val endTime: String,
     val durationMinutes: Int,
     val distanceFromPreviousKm: Double = 0.0,
     val transitEstimate: TransitEstimate? = null,
-    val event: Event? = null  // Non-null if this stop is for a scheduled event
+    val event: Event? = null,       // Non-null if this stop is for a scheduled event
+    val stopType: StopType = StopType.MAIN,
+    val waypoint: Waypoint? = null, // For waypoint/quick stop types
+    val scenicRoute: ScenicRoute? = null, // Scenic route to this stop (if any)
+    val neighborhoodName: String? = null  // For free time suggestions
 )
 
 data class UserPreferences(
