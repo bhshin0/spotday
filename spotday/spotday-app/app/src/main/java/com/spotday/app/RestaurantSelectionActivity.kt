@@ -97,9 +97,47 @@ fun RestaurantSelectionScreen(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
+        // Dining Style - Segmented Button (moved to top for prominence)
         Text(
-            text = "What type of cuisine would you like?",
-            style = MaterialTheme.typography.bodyLarge,
+            text = "Dining Style",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        MultiChoiceSegmentedButtonRow(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SegmentedButton(
+                checked = quickServiceChecked,
+                onCheckedChange = { quickServiceChecked = it },
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3)
+            ) { Text("Quick 30m") }
+            
+            SegmentedButton(
+                checked = casualChecked,
+                onCheckedChange = { casualChecked = it },
+                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3)
+            ) { Text("Casual 60m") }
+            
+            SegmentedButton(
+                checked = formalChecked,
+                onCheckedChange = { formalChecked = it },
+                shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3)
+            ) { Text("Formal 90m") }
+        }
+        
+        Text(
+            text = "(Skip for all styles)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
+        )
+
+        Divider(modifier = Modifier.padding(bottom = 16.dp))
+
+        Text(
+            text = "Cuisine",
+            style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(bottom = 8.dp)
         )
         
@@ -107,7 +145,7 @@ fun RestaurantSelectionScreen(
             text = "(Leave empty for all cuisines)",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 12.dp)
         )
 
         // Italian
@@ -198,88 +236,6 @@ fun RestaurantSelectionScreen(
                 text = "Vegetarian",
                 style = MaterialTheme.typography.bodyLarge
             )
-        }
-
-        // Dining Style Section
-        Divider(modifier = Modifier.padding(vertical = 16.dp))
-
-        Text(
-            text = "Dining Style",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-
-        Text(
-            text = "How much time do you want to spend eating?",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        // Quick Service
-        Row(
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
-            Checkbox(
-                checked = quickServiceChecked,
-                onCheckedChange = { quickServiceChecked = it }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column {
-                Text(
-                    text = "Quick Service (30 min)",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Text(
-                    text = "Food trucks, cafes, fast casual",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // Casual Sit-down
-        Row(
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
-            Checkbox(
-                checked = casualChecked,
-                onCheckedChange = { casualChecked = it }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column {
-                Text(
-                    text = "Casual Sit-down (60 min)",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Text(
-                    text = "Neighborhood restaurants, diners",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        // Formal Sit-down
-        Row(
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
-            Checkbox(
-                checked = formalChecked,
-                onCheckedChange = { formalChecked = it }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column {
-                Text(
-                    text = "Formal Sit-down (90 min)",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Text(
-                    text = "Fine dining, upscale (dinner only)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
         }
 
         // Nightlife Section
