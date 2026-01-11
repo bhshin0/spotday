@@ -405,7 +405,7 @@ fun ItineraryTimeline(
     onRegenerate: () -> Unit
 ) {
     val scrollState = rememberScrollState()
-    val estimatedCost = itinerary.sumOf { it.place.estimatedCost }
+    val estimatedCost = itinerary.sumOf { it.place?.estimatedCost ?: 0 }
     
     Column(
         modifier = Modifier

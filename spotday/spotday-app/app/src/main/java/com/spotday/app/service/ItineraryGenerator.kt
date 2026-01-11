@@ -778,8 +778,8 @@ class ItineraryGenerator(
             
             // Get location of last stop
             val lastStop = itinerary.last()
-            val lastLat = lastStop.place.lat
-            val lastLng = lastStop.place.lng
+            val lastLat = lastStop.place?.lat ?: lastStop.event?.venueLatitude ?: 37.7749
+            val lastLng = lastStop.place?.lng ?: lastStop.event?.venueLongitude ?: -122.4194
             
             // Parse end time of last stop and add 30 min gap
             val nightlifeCalendar = Calendar.getInstance()
