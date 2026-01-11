@@ -52,6 +52,7 @@ class RestaurantSelectionActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RestaurantSelectionScreen(
     startHour: Int,
