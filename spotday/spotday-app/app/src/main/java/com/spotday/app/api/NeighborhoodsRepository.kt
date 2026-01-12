@@ -1,20 +1,53 @@
 package com.spotday.app.api
 
+import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
 import com.spotday.app.model.CityProfile
 import com.spotday.app.model.DataSource
 import com.spotday.app.model.Neighborhood
 import com.spotday.app.model.NeighborhoodTier
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /**
  * Repository of neighborhoods across multiple cities.
  * Supports tiered neighborhoods (Essential/Classic/Local) and multiple data sources.
+ * 
+ * Data flow:
+ * 1. Check SharedPreferences cache for city
+ * 2. If not cached, fetch from Supabase → save to cache
+ * 3. Return cached data
  * 
  * Scaling strategy:
  * - Tier 1 cities (SF, NYC, LA): Hand-curated, 8-15 neighborhoods
  * - Tier 2 cities (Austin, Portland): LLM-seeded, 5-10 neighborhoods  
  * - Tier 3 cities: Algorithm-derived from venue clustering, 3-6 neighborhoods
  */
-class NeighborhoodsRepository {
+class NeighborhoodsRepository(private val context: Context? = null) {
+    
+    companion object {
+        private const val TAG = "NeighborhoodsRepo"
+        private const val PREFS_NAME = "neighborhoods_cache"
+        private const val KEY_PREFIX = "neighborhoods_"
+        private const val CACHE_TTL_HOURS = 24 * 7 // 1 week
+        
+        // Popular neighborhood combinations for full-day itineraries
+        val SF_CLASSIC_ROUTE = listOf("north_beach", "chinatown", "embarcadero")
+        val SF_FOODIE_ROUTE = listOf("mission", "castro", "hayes_valley")
+        val SF_NIGHTLIFE_ROUTE = listOf("mission", "castro", "soma")
+        
+        val AUSTIN_CLASSIC_ROUTE = listOf("south_congress", "downtown", "east_austin")
+        val AUSTIN_FOODIE_ROUTE = listOf("east_austin", "south_lamar", "rainey_street")
+    }
+    
+    private val prefs: SharedPreferences? = context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val json = Json { ignoreUnknownKeys = true }
+    
+    // In-memory cache for current session
+    private val memoryCache = mutableMapOf<String, List<Neighborhood>>()
     
     // City profiles define expected neighborhood counts based on city characteristics
     private val cityProfiles = listOf(
@@ -306,9 +339,68 @@ class NeighborhoodsRepository {
         )
     )
     
-    // Combined neighborhoods from all cities
-    private val _allNeighborhoods: List<Neighborhood> by lazy {
+    // Combined local neighborhoods (fallback data)
+    private val localNeighborhoods: List<Neighborhood> by lazy {
         sanFranciscoNeighborhoods + austinNeighborhoods
+    }
+    
+    // ============================================
+    // CACHING HELPERS
+    // ============================================
+    
+    private fun getCacheKey(cityId: String): String = "$KEY_PREFIX$cityId"
+    private fun getTimestampKey(cityId: String): String = "${KEY_PREFIX}${cityId}_ts"
+    
+    private fun saveToCache(cityId: String, neighborhoods: List<Neighborhood>) {
+        prefs ?: return
+        try {
+            val jsonString = json.encodeToString(neighborhoods)
+            prefs.edit()
+                .putString(getCacheKey(cityId), jsonString)
+                .putLong(getTimestampKey(cityId), System.currentTimeMillis())
+                .apply()
+            Log.d(TAG, "Saved ${neighborhoods.size} neighborhoods to cache for $cityId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save neighborhoods to cache", e)
+        }
+    }
+    
+    private fun loadFromCache(cityId: String): List<Neighborhood>? {
+        prefs ?: return null
+        try {
+            val timestamp = prefs.getLong(getTimestampKey(cityId), 0)
+            val age = System.currentTimeMillis() - timestamp
+            val maxAge = CACHE_TTL_HOURS * 60 * 60 * 1000L
+            
+            if (age > maxAge) {
+                Log.d(TAG, "Cache expired for $cityId (age: ${age / 3600000}h)")
+                return null
+            }
+            
+            val jsonString = prefs.getString(getCacheKey(cityId), null) ?: return null
+            val neighborhoods = json.decodeFromString<List<Neighborhood>>(jsonString)
+            Log.d(TAG, "Loaded ${neighborhoods.size} neighborhoods from cache for $cityId")
+            return neighborhoods
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load neighborhoods from cache", e)
+            return null
+        }
+    }
+    
+    private fun convertToAppNeighborhood(supabase: SupabaseNeighborhood): Neighborhood {
+        return Neighborhood(
+            id = supabase.id,
+            name = supabase.name,
+            cityId = supabase.city_id,
+            tier = NeighborhoodTier.valueOf(supabase.tier),
+            centerLat = supabase.center_lat,
+            centerLng = supabase.center_lng,
+            radiusMeters = supabase.radius_meters,
+            vibes = supabase.vibes,
+            dataSource = DataSource.valueOf(supabase.data_source),
+            adjacentNeighborhoods = supabase.adjacent_neighborhoods,
+            description = supabase.description
+        )
     }
     
     // ============================================
@@ -327,10 +419,75 @@ class NeighborhoodsRepository {
         cityProfiles.find { it.id == cityId }
     
     /**
-     * Get all neighborhoods for a specific city
+     * Get all neighborhoods for a specific city.
+     * This is the synchronous version that uses local data only.
+     * Prefer getNeighborhoodsForCityAsync() for fresh data from Supabase.
      */
-    fun getNeighborhoodsForCity(cityId: String): List<Neighborhood> =
-        _allNeighborhoods.filter { it.cityId == cityId }
+    fun getNeighborhoodsForCity(cityId: String): List<Neighborhood> {
+        // Check memory cache first
+        memoryCache[cityId]?.let { return it }
+        
+        // Check SharedPrefs cache
+        loadFromCache(cityId)?.let { cached ->
+            memoryCache[cityId] = cached
+            return cached
+        }
+        
+        // Fallback to local hardcoded data
+        return localNeighborhoods.filter { it.cityId == cityId }
+    }
+    
+    /**
+     * Get all neighborhoods for a specific city from Supabase.
+     * Uses caching: SharedPrefs → Supabase → cache.
+     */
+    suspend fun getNeighborhoodsForCityAsync(cityId: String): List<Neighborhood> = withContext(Dispatchers.IO) {
+        // Check memory cache first
+        memoryCache[cityId]?.let { return@withContext it }
+        
+        // Check SharedPrefs cache
+        loadFromCache(cityId)?.let { cached ->
+            memoryCache[cityId] = cached
+            return@withContext cached
+        }
+        
+        // Fetch from Supabase
+        try {
+            Log.d(TAG, "Fetching neighborhoods from Supabase for $cityId...")
+            val supabaseNeighborhoods = SupabaseClient.getNeighborhoods(cityId)
+            
+            if (supabaseNeighborhoods.isNotEmpty()) {
+                val neighborhoods = supabaseNeighborhoods.map { convertToAppNeighborhood(it) }
+                memoryCache[cityId] = neighborhoods
+                saveToCache(cityId, neighborhoods)
+                Log.d(TAG, "Loaded ${neighborhoods.size} neighborhoods from Supabase for $cityId")
+                return@withContext neighborhoods
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch from Supabase, using local fallback", e)
+        }
+        
+        // Fallback to local hardcoded data
+        val fallback = localNeighborhoods.filter { it.cityId == cityId }
+        Log.d(TAG, "Using ${fallback.size} local fallback neighborhoods for $cityId")
+        return@withContext fallback
+    }
+    
+    /**
+     * Clear cache for a city (useful for debugging or force refresh)
+     */
+    fun clearCache(cityId: String? = null) {
+        if (cityId != null) {
+            memoryCache.remove(cityId)
+            prefs?.edit()
+                ?.remove(getCacheKey(cityId))
+                ?.remove(getTimestampKey(cityId))
+                ?.apply()
+        } else {
+            memoryCache.clear()
+            prefs?.edit()?.clear()?.apply()
+        }
+    }
     
     /**
      * Get neighborhoods by tier for a city
@@ -345,15 +502,20 @@ class NeighborhoodsRepository {
         getNeighborhoodsByTier(cityId, NeighborhoodTier.ESSENTIAL)
     
     /**
-     * Get all defined neighborhoods across all cities
+     * Get all neighborhoods from memory/cache across all loaded cities
      */
-    fun getAllNeighborhoods(): List<Neighborhood> = _allNeighborhoods
+    fun getAllNeighborhoods(): List<Neighborhood> {
+        // Return all cached neighborhoods + local fallback
+        val cached = memoryCache.values.flatten()
+        if (cached.isNotEmpty()) return cached
+        return localNeighborhoods
+    }
     
     /**
-     * Get a specific neighborhood by ID (searches all cities)
+     * Get a specific neighborhood by ID (searches all loaded cities)
      */
     fun getNeighborhood(id: String): Neighborhood? = 
-        _allNeighborhoods.find { it.id == id }
+        getAllNeighborhoods().find { it.id == id }
     
     /**
      * Get a specific neighborhood by ID within a city
@@ -362,11 +524,19 @@ class NeighborhoodsRepository {
         getNeighborhoodsForCity(cityId).find { it.id == neighborhoodId }
     
     /**
-     * Get neighborhoods adjacent to the given neighborhood
+     * Get neighborhoods adjacent to the given neighborhood (global lookup - may match wrong city)
      */
     fun getAdjacentNeighborhoods(neighborhoodId: String): List<Neighborhood> {
         val neighborhood = getNeighborhood(neighborhoodId) ?: return emptyList()
         return neighborhood.adjacentNeighborhoods.mapNotNull { getNeighborhood(it) }
+    }
+    
+    /**
+     * Get neighborhoods adjacent to the given neighborhood within a specific city
+     */
+    fun getAdjacentNeighborhoods(cityId: String, neighborhoodId: String): List<Neighborhood> {
+        val neighborhood = getNeighborhood(cityId, neighborhoodId) ?: return emptyList()
+        return neighborhood.adjacentNeighborhoods.mapNotNull { getNeighborhood(cityId, it) }
     }
     
     /**
@@ -393,7 +563,7 @@ class NeighborhoodsRepository {
      * Find the nearest neighborhood to a given lat/lng (auto-detect city)
      */
     fun findNearestNeighborhood(lat: Double, lng: Double): Neighborhood? {
-        return _allNeighborhoods.minByOrNull { neighborhood ->
+        return getAllNeighborhoods().minByOrNull { neighborhood ->
             val latDiff = neighborhood.centerLat - lat
             val lngDiff = neighborhood.centerLng - lng
             latDiff * latDiff + lngDiff * lngDiff
@@ -456,15 +626,5 @@ class NeighborhoodsRepository {
     fun getRecommendedNeighborhoodCount(cityId: String): Int {
         val profile = getCityProfile(cityId) ?: return 5
         return profile.estimatedHappeningAreas
-    }
-    
-    companion object {
-        // Popular neighborhood combinations for full-day itineraries
-        val SF_CLASSIC_ROUTE = listOf("north_beach", "chinatown", "embarcadero")
-        val SF_FOODIE_ROUTE = listOf("mission", "castro", "hayes_valley")
-        val SF_NIGHTLIFE_ROUTE = listOf("mission", "castro", "soma")
-        
-        val AUSTIN_CLASSIC_ROUTE = listOf("south_congress", "downtown", "east_austin")
-        val AUSTIN_FOODIE_ROUTE = listOf("east_austin", "south_lamar", "rainey_street")
     }
 }

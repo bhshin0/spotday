@@ -10,17 +10,27 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /**
- * Repository for events in San Francisco.
+ * Repository for events.
  * Reads from Supabase cache first, falls back to direct Ticketmaster API.
  */
-class EventsRepository {
+class EventsRepository(private val cityId: String = "san_francisco") {
 
     companion object {
         private const val TAG = "EventsRepository"
-        private const val CITY_ID = "san_francisco"  // Current city
-        private const val CITY = "San Francisco"
-        private const val STATE_CODE = "CA"
+        
+        // City ID to (city name, state code) mapping for Ticketmaster API
+        private val CITY_INFO = mapOf(
+            "san_francisco" to Pair("San Francisco", "CA"),
+            "charlotte" to Pair("Charlotte", "NC"),
+            "phoenix" to Pair("Phoenix", "AZ"),
+            "tucson" to Pair("Tucson", "AZ"),
+            "austin" to Pair("Austin", "TX"),
+            "new_york" to Pair("New York", "NY")
+        )
     }
+    
+    private val cityName: String = CITY_INFO[cityId]?.first ?: "San Francisco"
+    private val stateCode: String = CITY_INFO[cityId]?.second ?: "CA"
 
     /**
      * Get all available events for the selected time window.
@@ -32,7 +42,7 @@ class EventsRepository {
      * @return List of events that start within the time window, or empty list if unavailable
      */
     suspend fun getEventsForTimeWindow(startHour: Int, endHour: Int): List<Event> {
-        Log.d(TAG, "Getting events for time window $startHour - $endHour")
+        Log.d(TAG, "Getting events for city=$cityId, time window $startHour - $endHour")
         
         // Try Supabase cache first
         try {
@@ -86,13 +96,14 @@ class EventsRepository {
      */
     private suspend fun fetchFromSupabase(startHour: Int, endHour: Int): List<Event> {
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        Log.d(TAG, "Fetching events from Supabase for date: $today, hours: $startHour-$endHour")
         
         val cachedEvents = SupabaseClient.postgrest
             .from("cached_events")
             .select {
                 filter {
-                    eq("city_id", CITY_ID)
-                    gte("start_date", today)
+                    eq("city_id", cityId)
+                    eq("start_date", today)  // Only today's events, not future dates
                     gte("start_hour", startHour)
                     lt("start_hour", endHour)
                 }
@@ -142,8 +153,8 @@ class EventsRepository {
         Log.d(TAG, "Fetching events from $startDateTime to $endDateTime")
         
         val response = TicketmasterApiClient.api.searchEvents(
-            city = CITY,
-            stateCode = STATE_CODE,
+            city = cityName,
+            stateCode = stateCode,
             startDateTime = startDateTime,
             endDateTime = endDateTime,
             sort = "relevance,desc",

@@ -30,6 +30,7 @@ class ActivityPreferencesActivity : ComponentActivity() {
         val startLat = intent.getDoubleExtra("startLatitude", 0.0).takeIf { it != 0.0 }
         val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
         val explorationMode = intent.getStringExtra("explorationMode") ?: "ONE_AREA"
+        val cityId = intent.getStringExtra("cityId") ?: "san_francisco"
         
         setContent {
             SpotDayTheme {
@@ -45,7 +46,8 @@ class ActivityPreferencesActivity : ComponentActivity() {
                         isSpontaneousMode = isSpontaneousMode,
                         startLatitude = startLat,
                         startLongitude = startLng,
-                        explorationMode = explorationMode
+                        explorationMode = explorationMode,
+                        cityId = cityId
                     )
                 }
             }
@@ -80,7 +82,8 @@ fun ActivityPreferencesScreen(
     isSpontaneousMode: Boolean = false,
     startLatitude: Double? = null,
     startLongitude: Double? = null,
-    explorationMode: String = "ONE_AREA"
+    explorationMode: String = "ONE_AREA",
+    cityId: String = "san_francisco"
 ) {
     val context = LocalContext.current
     val preferencesManager = remember { PreferencesManager(context) }
@@ -174,6 +177,7 @@ fun ActivityPreferencesScreen(
                         putExtra("isSpontaneousMode", isSpontaneousMode)
                         putExtra("activityTypes", selectedActivities.toTypedArray())
                         putExtra("explorationMode", explorationMode)
+                        putExtra("cityId", cityId)
                         if (startLatitude != null) putExtra("startLatitude", startLatitude)
                         if (startLongitude != null) putExtra("startLongitude", startLongitude)
                     }

@@ -15,9 +15,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.spotday.app.api.PlacesRepository
 import com.spotday.app.model.ExplorationMode
 import com.spotday.app.ui.theme.SpotDayTheme
 import com.spotday.app.util.PreferencesManager
+import kotlinx.coroutines.launch
+
+// Available cities for testing
+data class CityOption(val id: String, val displayName: String)
+
+val availableCities = listOf(
+    CityOption("san_francisco", "San Francisco"),
+    CityOption("charlotte", "Charlotte, NC"),
+    CityOption("phoenix", "Phoenix, AZ"),
+    CityOption("tucson", "Tucson, AZ")
+)
 
 class WelcomeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,12 +47,21 @@ class WelcomeActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WelcomeScreen() {
     val context = LocalContext.current
     val preferencesManager = remember { PreferencesManager(context) }
+    val placesRepository = remember { PlacesRepository(context) }
+    val scope = rememberCoroutineScope()
     
     // Load saved preferences
+    var selectedCity by remember { 
+        mutableStateOf(availableCities.find { it.id == preferencesManager.getSelectedCity() } ?: availableCities.first())
+    }
+    var cityDropdownExpanded by remember { mutableStateOf(false) }
+    var isPrefetching by remember { mutableStateOf(false) }
+    
     var isSpontaneousMode by remember { mutableStateOf(preferencesManager.getSpontaneousMode()) }
     var timeRange by remember { 
         mutableStateOf(preferencesManager.getTimeRangeStart()..preferencesManager.getTimeRangeEnd()) 
@@ -56,6 +77,18 @@ fun WelcomeScreen() {
                 ExplorationMode.ONE_AREA
             }
         )
+    }
+    
+    // Prefetch data for selected city on selection change
+    LaunchedEffect(selectedCity) {
+        preferencesManager.saveSelectedCity(selectedCity.id)
+        isPrefetching = true
+        try {
+            placesRepository.prefetchForCity(selectedCity.id)
+        } catch (e: Exception) {
+            Log.e("WelcomeScreen", "Prefetch failed for ${selectedCity.id}", e)
+        }
+        isPrefetching = false
     }
     
     // Save preferences whenever they change
@@ -108,9 +141,54 @@ fun WelcomeScreen() {
         Spacer(modifier = Modifier.height(8.dp))
         
         Text(
-            text = "Let's build your perfect day in San Francisco.",
+            text = "Let's build your perfect day in ${selectedCity.displayName}.",
             style = MaterialTheme.typography.bodyLarge
         )
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // City Selector Dropdown
+        ExposedDropdownMenuBox(
+            expanded = cityDropdownExpanded,
+            onExpandedChange = { cityDropdownExpanded = it }
+        ) {
+            OutlinedTextField(
+                value = selectedCity.displayName,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("City") },
+                trailingIcon = {
+                    if (isPrefetching) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = cityDropdownExpanded)
+                    }
+                },
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor()
+            )
+            
+            ExposedDropdownMenu(
+                expanded = cityDropdownExpanded,
+                onDismissRequest = { cityDropdownExpanded = false }
+            ) {
+                availableCities.forEach { city ->
+                    DropdownMenuItem(
+                        text = { Text(city.displayName) },
+                        onClick = {
+                            selectedCity = city
+                            cityDropdownExpanded = false
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                    )
+                }
+            }
+        }
         
         Spacer(modifier = Modifier.height(48.dp))
         
@@ -267,6 +345,7 @@ fun WelcomeScreen() {
                         putExtra("isHungryNow", isHungryNow)
                         putExtra("isSpontaneousMode", isSpontaneousMode)
                         putExtra("explorationMode", explorationMode.name)
+                        putExtra("cityId", selectedCity.id)
                         if (isSpontaneousMode) {
                             putExtra("startLatitude", startLat)
                             putExtra("startLongitude", startLng)

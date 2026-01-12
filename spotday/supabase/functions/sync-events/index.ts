@@ -1,6 +1,6 @@
 // sync-events Edge Function
 // Fetches events from Ticketmaster API and caches them in Supabase
-// Runs daily at 6 AM PT via cron
+// Runs nightly at 11 PM PT via cron (before the next day)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -150,10 +150,11 @@ function convertEvent(tmEvent: TicketmasterEvent, cityId: string, index: number)
   };
 }
 
-// Fetch events from Ticketmaster for a city
+// Fetch events from Ticketmaster for a city using geo-coordinates
 async function fetchTicketmasterEvents(
-  city: string,
-  stateCode: string,
+  lat: number,
+  lng: number,
+  radiusMiles: number = 30,
   daysAhead: number = 7
 ): Promise<TicketmasterEvent[]> {
   const now = new Date();
@@ -165,8 +166,9 @@ async function fetchTicketmasterEvents(
 
   const params = new URLSearchParams({
     apikey: TICKETMASTER_API_KEY,
-    city: city,
-    stateCode: stateCode,
+    latlong: `${lat},${lng}`,
+    radius: radiusMiles.toString(),
+    unit: "miles",
     startDateTime: startDateTime,
     endDateTime: endDateTime,
     sort: "relevance,desc",
@@ -224,8 +226,10 @@ serve(async (req) => {
         .single();
 
       try {
-        // Fetch events from Ticketmaster
-        const tmEvents = await fetchTicketmasterEvents(city.name, city.state_code || "CA");
+        // Fetch events from Ticketmaster using city coordinates
+        // Use larger radius for spread-out cities
+        const radius = city.density === "spread_out" ? 40 : 30;
+        const tmEvents = await fetchTicketmasterEvents(city.center_lat, city.center_lng, radius);
         
         // Convert to our format
         const cachedEvents = tmEvents

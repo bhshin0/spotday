@@ -35,6 +35,7 @@ class EventSelectionActivity : ComponentActivity() {
         val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
         val activityTypes = intent.getStringArrayExtra("activityTypes")?.toList() ?: emptyList()
         val explorationMode = intent.getStringExtra("explorationMode") ?: "ONE_AREA"
+        val cityId = intent.getStringExtra("cityId") ?: "san_francisco"
         
         setContent {
             SpotDayTheme {
@@ -51,7 +52,8 @@ class EventSelectionActivity : ComponentActivity() {
                         startLatitude = startLat,
                         startLongitude = startLng,
                         activityTypes = activityTypes,
-                        explorationMode = explorationMode
+                        explorationMode = explorationMode,
+                        cityId = cityId
                     )
                 }
             }
@@ -89,7 +91,8 @@ fun EventSelectionScreen(
     startLatitude: Double?,
     startLongitude: Double?,
     activityTypes: List<String>,
-    explorationMode: String = "ONE_AREA"
+    explorationMode: String = "ONE_AREA",
+    cityId: String = "san_francisco"
 ) {
     val context = LocalContext.current
     var events by remember { mutableStateOf<List<Event>>(emptyList()) }
@@ -98,9 +101,9 @@ fun EventSelectionScreen(
     var overlapError by remember { mutableStateOf<String?>(null) }
     
     // Load events for the time window
-    LaunchedEffect(startHour, endHour) {
+    LaunchedEffect(startHour, endHour, cityId) {
         withContext(Dispatchers.IO) {
-            val repository = EventsRepository()
+            val repository = EventsRepository(cityId)
             events = repository.getEventsForTimeWindow(startHour, endHour)
             isLoading = false
         }
@@ -244,6 +247,7 @@ fun EventSelectionScreen(
                         putExtra("activityTypes", activityTypes.toTypedArray())
                         putExtra("selectedEventIds", selectedEventIds.toTypedArray())
                         putExtra("explorationMode", explorationMode)
+                        putExtra("cityId", cityId)
                         if (startLatitude != null) putExtra("startLatitude", startLatitude)
                         if (startLongitude != null) putExtra("startLongitude", startLongitude)
                     }

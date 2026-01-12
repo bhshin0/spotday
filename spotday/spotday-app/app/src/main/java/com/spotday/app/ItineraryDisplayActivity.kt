@@ -44,8 +44,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// San Francisco center
-private val SF_CENTER = LatLng(37.7749, -122.4194)
+// City centers for fallback (when no itinerary stops)
+private val CITY_CENTERS = mapOf(
+    "san_francisco" to LatLng(37.7749, -122.4194),
+    "charlotte" to LatLng(35.2271, -80.8431),
+    "phoenix" to LatLng(33.4484, -112.074),
+    "tucson" to LatLng(32.2226, -110.9747)
+)
+private val DEFAULT_CENTER = LatLng(37.7749, -122.4194) // SF as fallback
 
 class ItineraryDisplayActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,8 +71,9 @@ class ItineraryDisplayActivity : ComponentActivity() {
         val startLng = intent.getDoubleExtra("startLongitude", 0.0).takeIf { it != 0.0 }
         val explorationModeStr = intent.getStringExtra("explorationMode") ?: "ONE_AREA"
         val explorationMode = try { ExplorationMode.valueOf(explorationModeStr) } catch (e: Exception) { ExplorationMode.ONE_AREA }
+        val cityId = intent.getStringExtra("cityId") ?: "san_francisco"
         
-        Log.d("ItineraryDisplay", "Received: time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode, activities=$activityTypes, food=$foodTypes, styles=${if (serviceStyles.isEmpty()) "ALL" else serviceStyles}, nightlife=$nightlifeTypes, events=${selectedEventIds.size}, explorationMode=$explorationMode")
+        Log.d("ItineraryDisplay", "Received: city=$cityId, time range=$startHour-$endHour, budget=$totalBudget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode, activities=$activityTypes, food=$foodTypes, styles=${if (serviceStyles.isEmpty()) "ALL" else serviceStyles}, nightlife=$nightlifeTypes, events=${selectedEventIds.size}, explorationMode=$explorationMode")
         if (startLat != null && startLng != null) {
             Log.d("ItineraryDisplay", "Starting location: ($startLat, $startLng)")
         }
@@ -90,7 +97,8 @@ class ItineraryDisplayActivity : ComponentActivity() {
                         serviceStyles = serviceStyles,
                         nightlifeTypes = nightlifeTypes,
                         selectedEventIds = selectedEventIds,
-                        explorationMode = explorationMode
+                        explorationMode = explorationMode,
+                        cityId = cityId
                     )
                 }
             }
@@ -112,10 +120,15 @@ class ItineraryViewModel(
     private val nightlifeTypes: List<String>,
     private val selectedEventIds: List<String>,
     private val explorationMode: ExplorationMode,
-    placesRepository: PlacesRepository
+    placesRepository: PlacesRepository,
+    cityId: String = "san_francisco"
 ) : ViewModel() {
     
-    private val itineraryGenerator = ItineraryGenerator(placesRepository)
+    private val itineraryGenerator = ItineraryGenerator(
+        placesRepository, 
+        placesRepository.neighborhoodsRepository,
+        eventsRepository = com.spotday.app.api.EventsRepository(cityId)
+    )
     
     var itinerary by mutableStateOf<List<ItineraryStop>>(emptyList())
         private set
@@ -206,10 +219,20 @@ fun ItineraryDisplayScreen(
     serviceStyles: List<String> = emptyList(),
     nightlifeTypes: List<String> = emptyList(),
     selectedEventIds: List<String> = emptyList(),
-    explorationMode: ExplorationMode = ExplorationMode.ONE_AREA
+    explorationMode: ExplorationMode = ExplorationMode.ONE_AREA,
+    cityId: String = "san_francisco"
 ) {
     val context = LocalContext.current
-    val placesRepository = remember { PlacesRepository(context) }
+    val placesRepository = remember(cityId) { 
+        PlacesRepository(context).also { it.currentCityId = cityId }
+    }
+    
+    // Prefetch data for the selected city (ensures remote data is loaded)
+    var isDataLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(cityId) {
+        placesRepository.prefetchForCity(cityId)
+        isDataLoaded = true
+    }
     
     val viewModel: ItineraryViewModel = viewModel(
         factory = object : ViewModelProvider.Factory {
@@ -229,7 +252,8 @@ fun ItineraryDisplayScreen(
                     nightlifeTypes,
                     selectedEventIds,
                     explorationMode,
-                    placesRepository
+                    placesRepository,
+                    cityId
                 ) as T
             }
         }
@@ -339,8 +363,24 @@ fun ItineraryMap(itinerary: List<ItineraryStop>) {
         return
     }
     
+    // Calculate center from itinerary stops
+    val mapCenter = remember(itinerary) {
+        val coords = itinerary.mapNotNull { stop ->
+            val lat = stop.place?.lat ?: stop.event?.venueLatitude
+            val lng = stop.place?.lng ?: stop.event?.venueLongitude
+            if (lat != null && lng != null) LatLng(lat, lng) else null
+        }
+        if (coords.isNotEmpty()) {
+            val avgLat = coords.map { it.latitude }.average()
+            val avgLng = coords.map { it.longitude }.average()
+            LatLng(avgLat, avgLng)
+        } else {
+            DEFAULT_CENTER
+        }
+    }
+    
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(SF_CENTER, 12f)
+        position = CameraPosition.fromLatLngZoom(mapCenter, 13f)
     }
     
     // Separate main stops from waypoints/quick stops for different rendering

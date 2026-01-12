@@ -19,6 +19,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_SERVICE_STYLES = "selected_service_styles"
         private const val KEY_EXPLORATION_MODE = "exploration_mode"
         private const val KEY_DEFAULT_BUDGET = "default_budget"
+        private const val KEY_SELECTED_CITY = "selected_city"
         
         // WelcomeActivity preferences
         private const val KEY_IS_SPONTANEOUS_MODE = "is_spontaneous_mode"
@@ -27,6 +28,9 @@ class PreferencesManager(context: Context) {
         private const val KEY_DURATION_HOURS = "duration_hours"
         private const val KEY_BUDGET = "budget"
         private const val KEY_IS_HUNGRY_NOW = "is_hungry_now"
+        
+        // Default city ID
+        const val DEFAULT_CITY_ID = "san_francisco"
     }
     
     // Activity selections
@@ -129,6 +133,15 @@ class PreferencesManager(context: Context) {
     
     fun getHungryNow(): Boolean {
         return prefs.getBoolean(KEY_IS_HUNGRY_NOW, false)
+    }
+    
+    // Selected city
+    fun saveSelectedCity(cityId: String) {
+        prefs.edit().putString(KEY_SELECTED_CITY, cityId).apply()
+    }
+    
+    fun getSelectedCity(): String {
+        return prefs.getString(KEY_SELECTED_CITY, DEFAULT_CITY_ID) ?: DEFAULT_CITY_ID
     }
     
     // Clear all preferences

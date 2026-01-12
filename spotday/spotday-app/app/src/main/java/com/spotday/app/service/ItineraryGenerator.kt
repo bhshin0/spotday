@@ -25,10 +25,10 @@ import kotlin.math.*
 
 class ItineraryGenerator(
     private val placesRepository: PlacesRepository,
+    private val neighborhoodsRepository: NeighborhoodsRepository,
     private val eventsRepository: EventsRepository = EventsRepository(),
     private val scenicRoutesRepository: ScenicRoutesRepository = ScenicRoutesRepository(),
-    private val quickStopsRepository: QuickStopsRepository = QuickStopsRepository(),
-    private val neighborhoodsRepository: NeighborhoodsRepository = NeighborhoodsRepository()
+    private val quickStopsRepository: QuickStopsRepository = QuickStopsRepository()
 ) {
 
     companion object {
@@ -95,11 +95,13 @@ class ItineraryGenerator(
      * Uses weighted random selection - neighborhoods with more matching venues have higher probability.
      * 
      * @param candidateVenues All venues matching the user's selected activity/food types
+     * @param cityId The current city ID for scoped neighborhood lookups
      * @param isSpontaneous If true, skip neighborhood selection (city-wide mode)
      * @return The selected neighborhood, or null for city-wide mode
      */
     private fun selectHomeNeighborhood(
         candidateVenues: List<Place>,
+        cityId: String,
         isSpontaneous: Boolean
     ): Neighborhood? {
         // Spontaneous mode = city-wide, no neighborhood filtering
@@ -119,7 +121,7 @@ class ItineraryGenerator(
             return null
         }
         
-        Log.d("ItineraryGenerator", "Venue counts by neighborhood: $counts")
+        Log.d("ItineraryGenerator", "Venue counts by neighborhood for $cityId: $counts")
         
         // Weighted random selection - more venues = higher probability
         val totalWeight = counts.values.sum()
@@ -128,14 +130,15 @@ class ItineraryGenerator(
         for ((neighborhoodId, count) in counts) {
             randomValue -= count
             if (randomValue < 0) {
-                val selected = neighborhoodsRepository.getNeighborhood(neighborhoodId)
-                Log.d("ItineraryGenerator", "Selected neighborhood: ${selected?.name} (had $count/${totalWeight} venues)")
+                // Use city-scoped lookup to avoid matching wrong city's neighborhoods
+                val selected = neighborhoodsRepository.getNeighborhood(cityId, neighborhoodId)
+                Log.d("ItineraryGenerator", "Selected neighborhood: ${selected?.name ?: neighborhoodId} (had $count/${totalWeight} venues)")
                 return selected
             }
         }
         
         // Fallback (shouldn't reach here)
-        return counts.keys.firstOrNull()?.let { neighborhoodsRepository.getNeighborhood(it) }
+        return counts.keys.firstOrNull()?.let { neighborhoodsRepository.getNeighborhood(cityId, it) }
     }
     
     // Calculate distance between two points in kilometers using Haversine formula
@@ -566,6 +569,11 @@ class ItineraryGenerator(
         selectedEventIds: List<String> = emptyList(),
         explorationMode: ExplorationMode = ExplorationMode.ONE_AREA
     ): List<ItineraryStop> {
+        // Ensure data is loaded for the current city before generating
+        val cityId = placesRepository.currentCityId
+        Log.d("ItineraryGenerator", "Ensuring data loaded for city: $cityId")
+        placesRepository.prefetchForCity(cityId)
+        
         Log.d("ItineraryGenerator", "Generating itinerary from $startHour to $endHour, budget: $$totalBudget, activities: $activityTypes, food: $foodTypes, serviceStyles: ${if (serviceStyles.isEmpty()) "ALL" else serviceStyles}, hungryNow: $isHungryNow, spontaneous: $isSpontaneousMode, nightlife: $nightlifeTypes, avoidOutdoor: $avoidOutdoor, events: ${selectedEventIds.size}, explorationMode: $explorationMode")
 
         val totalHours = endHour - startHour
@@ -713,27 +721,38 @@ class ItineraryGenerator(
             }
         }
         
-        // Initialize starting location
+        // Initialize starting location (cityId already defined above)
         val (initialLat, initialLng) = when {
             userStartLat != null && userStartLng != null -> {
                 Log.d("ItineraryGenerator", "Using provided start location: ($userStartLat, $userStartLng)")
                 Pair(userStartLat, userStartLng)
             }
             else -> {
-                // Existing behavior: random SF neighborhood for variety on regeneration
-                val startingLocations = listOf(
-                    Pair(37.8080, -122.4177), // Fisherman's Wharf
-                    Pair(37.7749, -122.4194), // Downtown/Union Square
-                    Pair(37.7599, -122.4148), // Mission District
-                    Pair(37.8000, -122.4100), // North Beach
-                    Pair(37.7700, -122.4500), // Haight-Ashbury
-                    Pair(37.7615, -122.4350), // Castro
-                    Pair(37.7800, -122.4600), // Inner Richmond
-                    Pair(37.8000, -122.4350)  // Marina
-                )
-                val randomStart = startingLocations.random()
-                Log.d("ItineraryGenerator", "Using random start location: ($randomStart)")
-                randomStart
+                // Get neighborhoods for the current city and pick a random one
+                val cityNeighborhoods = neighborhoodsRepository.getNeighborhoodsForCity(cityId)
+                
+                if (cityNeighborhoods.isNotEmpty()) {
+                    val randomNeighborhood = cityNeighborhoods.random()
+                    Log.d("ItineraryGenerator", "Using random $cityId neighborhood: ${randomNeighborhood.name}")
+                    Pair(randomNeighborhood.centerLat, randomNeighborhood.centerLng)
+                } else {
+                    // Fallback: use first available venue's location
+                    val firstPlace = activitiesAvailableToday.firstOrNull() ?: candidateRestaurants.firstOrNull()
+                    if (firstPlace != null) {
+                        Log.d("ItineraryGenerator", "Using first venue location: ${firstPlace.name}")
+                        Pair(firstPlace.lat, firstPlace.lng)
+                    } else {
+                        // Last resort: use city profile center if available
+                        val cityProfile = neighborhoodsRepository.getCityProfile(cityId)
+                        if (cityProfile != null) {
+                            Log.d("ItineraryGenerator", "Using $cityId city center")
+                            Pair(cityProfile.centerLat, cityProfile.centerLng)
+                        } else {
+                            Log.e("ItineraryGenerator", "No location data available for $cityId")
+                            Pair(0.0, 0.0) // Will show error state
+                        }
+                    }
+                }
             }
         }
         
@@ -750,11 +769,12 @@ class ItineraryGenerator(
         // Determine "home" neighborhood based on venue concentration (weighted random)
         var homeNeighborhood = selectHomeNeighborhood(
             candidateVenues = allCandidateVenues,
+            cityId = cityId,
             isSpontaneous = isSpontaneousMode
         )
         
         var adjacentNeighborhoods = homeNeighborhood?.let { 
-            neighborhoodsRepository.getAdjacentNeighborhoods(it.id).map { n -> n.id }.toSet()
+            neighborhoodsRepository.getAdjacentNeighborhoods(cityId, it.id).map { n -> n.id }.toSet()
         } ?: emptySet()
         
         Log.d("ItineraryGenerator", "Home neighborhood: ${homeNeighborhood?.name ?: "city-wide"}, adjacent: $adjacentNeighborhoods, mode: $explorationMode")
@@ -1370,6 +1390,9 @@ class ItineraryGenerator(
         val filledItinerary = mutableListOf<ItineraryStop>()
         val usedQuickStops = mutableSetOf<String>()
         
+        // Get cached places for coffee stop fallback
+        val cachedPlaces = placesRepository.getCachedPlaces()
+        
         for (i in itinerary.indices) {
             val currentStop = itinerary[i]
             filledItinerary.add(currentStop)
@@ -1385,13 +1408,17 @@ class ItineraryGenerator(
                     val nextLat = nextStop.place?.lat ?: nextStop.event?.venueLatitude ?: 37.7749
                     val nextLng = nextStop.place?.lng ?: nextStop.event?.venueLongitude ?: -122.4194
                     
+                    // Get neighborhood name for free time suggestions
+                    val neighborhoodName = neighborhoodsRepository.findNearestNeighborhood(currentLat, currentLng)?.name 
+                        ?: "the area"
+                    
                     Log.d("ItineraryGenerator", "Found gap of $gapMinutes min between ${currentStop.place?.name ?: "event"} and ${nextStop.place?.name ?: "event"}")
                     
                     when {
                         gapMinutes > 45 -> {
-                            // Try to insert a quick stop
+                            // Try to insert a quick stop (viewpoints, murals, or coffee)
                             val quickStop = quickStopsRepository.findStopForGap(
-                                currentLat, currentLng, gapMinutes - 15, usedQuickStops
+                                currentLat, currentLng, gapMinutes - 15, usedQuickStops, cachedPlaces
                             )
                             
                             if (quickStop != null) {
@@ -1410,7 +1437,7 @@ class ItineraryGenerator(
                                 val freeTime = createFreeTime(
                                     currentStop.endTime,
                                     gapMinutes,
-                                    quickStopsRepository.getNeighborhoodName(currentLat, currentLng)
+                                    neighborhoodName
                                 )
                                 filledItinerary.add(freeTime)
                                 Log.d("ItineraryGenerator", "Added free time: $gapMinutes min")
@@ -1438,7 +1465,7 @@ class ItineraryGenerator(
                                 val freeTime = createFreeTime(
                                     currentStop.endTime,
                                     gapMinutes,
-                                    quickStopsRepository.getNeighborhoodName(currentLat, currentLng)
+                                    neighborhoodName
                                 )
                                 filledItinerary.add(freeTime)
                                 Log.d("ItineraryGenerator", "Added free time: $gapMinutes min")
@@ -1449,7 +1476,7 @@ class ItineraryGenerator(
                             val freeTime = createFreeTime(
                                 currentStop.endTime,
                                 gapMinutes,
-                                quickStopsRepository.getNeighborhoodName(currentLat, currentLng)
+                                neighborhoodName
                             )
                             filledItinerary.add(freeTime)
                             Log.d("ItineraryGenerator", "Added short free time: $gapMinutes min")

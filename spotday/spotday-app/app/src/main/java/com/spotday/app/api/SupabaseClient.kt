@@ -5,7 +5,9 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.serializer.KotlinXSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /**
  * Supabase client for accessing cached API data.
@@ -18,6 +20,10 @@ object SupabaseClient {
         supabaseKey = BuildConfig.SUPABASE_ANON_KEY
     ) {
         install(Postgrest)
+        // Ignore unknown keys like raw_json that we don't need in the app
+        defaultSerializer = KotlinXSerializer(Json {
+            ignoreUnknownKeys = true
+        })
     }
     
     val postgrest get() = client.postgrest
@@ -39,6 +45,65 @@ object SupabaseClient {
                 .decodeSingleOrNull<SupabaseCachedWeather>()
         } catch (e: Exception) {
             null
+        }
+    }
+    
+    /**
+     * Get all cached places for a city.
+     * Returns all places at once for local filtering (faster than multiple queries).
+     * Returns empty list if not found or on error.
+     */
+    suspend fun getAllPlaces(cityId: String): List<SupabaseCachedPlace> {
+        return try {
+            postgrest.from("cached_places")
+                .select {
+                    filter {
+                        eq("city_id", cityId)
+                    }
+                }
+                .decodeList<SupabaseCachedPlace>()
+        } catch (e: Exception) {
+            android.util.Log.e("SupabaseClient", "Failed to fetch places for $cityId", e)
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get all neighborhoods for a city.
+     * Returns empty list if not found or on error.
+     */
+    suspend fun getNeighborhoods(cityId: String): List<SupabaseNeighborhood> {
+        return try {
+            postgrest.from("neighborhoods")
+                .select {
+                    filter {
+                        eq("city_id", cityId)
+                    }
+                }
+                .decodeList<SupabaseNeighborhood>()
+        } catch (e: Exception) {
+            android.util.Log.e("SupabaseClient", "Failed to fetch neighborhoods for $cityId", e)
+            emptyList()
+        }
+    }
+    
+    /**
+     * Get all quick stops (viewpoints, photo spots, street art) for a city.
+     * Coffee stops come from cached_places, not this table.
+     * Returns empty list if not found or on error.
+     */
+    suspend fun getQuickStops(cityId: String): List<SupabaseQuickStop> {
+        return try {
+            postgrest.from("cached_quick_stops")
+                .select {
+                    filter {
+                        eq("city_id", cityId)
+                    }
+                }
+                .decodeList<SupabaseQuickStop>()
+        } catch (e: Exception) {
+            android.util.Log.e("SupabaseClient", "Failed to fetch quick stops for $cityId", e)
+            emptyList()
         }
     }
 }
@@ -119,4 +184,57 @@ data class SupabaseCachedWeather(
     val humidityPercent: Int? get() = humidity_percent
     val windMph: Int? get() = wind_mph
     val iconCode: String? get() = icon_code
+}
+
+@Serializable
+data class SupabaseCachedPlace(
+    val id: String,
+    val city_id: String,
+    val neighborhood_id: String? = null,
+    val name: String,
+    val place_type: String,           // "RESTAURANT", "MUSEUM", "PARK", etc.
+    val lat: Double,
+    val lng: Double,
+    val rating: Double? = null,
+    val review_count: Int = 0,
+    val price_level: Int? = null,     // 1-4
+    val is_outdoor: Boolean = false,
+    val open_hour: Int = 6,
+    val close_hour: Int = 22,
+    // Nightlife-specific fields
+    val nightlife_category: String? = null,  // cocktail_bar, dive_bar, rooftop_bar, etc.
+    val last_verified_at: String? = null,    // ISO timestamp for staleness filtering
+    val is_permanently_closed: Boolean = false
+) {
+    // Convenience accessors for camelCase
+    val cityId: String get() = city_id
+    val neighborhoodId: String? get() = neighborhood_id
+    val placeType: String get() = place_type
+    val reviewCount: Int get() = review_count
+    val priceLevel: Int? get() = price_level
+    val isOutdoor: Boolean get() = is_outdoor
+    val openHour: Int get() = open_hour
+    val closeHour: Int get() = close_hour
+    val nightlifeCategory: String? get() = nightlife_category
+    val lastVerifiedAt: String? get() = last_verified_at
+    val isPermanentlyClosed: Boolean get() = is_permanently_closed
+}
+
+@Serializable
+data class SupabaseQuickStop(
+    val id: String,
+    val city_id: String,
+    val name: String,
+    val lat: Double,
+    val lng: Double,
+    val stop_type: String,            // "VIEWPOINT", "PHOTO_SPOT", "STREET_ART"
+    val description: String? = null,
+    val duration_minutes: Int = 20,
+    val neighborhood_id: String? = null
+) {
+    // Convenience accessors for camelCase
+    val cityId: String get() = city_id
+    val stopType: String get() = stop_type
+    val durationMinutes: Int get() = duration_minutes
+    val neighborhoodId: String? get() = neighborhood_id
 }

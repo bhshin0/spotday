@@ -20,7 +20,22 @@ import kotlin.math.sqrt
 
 class PlacesRepository(private val context: Context) {
     private val placesClient: PlacesClient
-    private val neighborhoodsRepository = NeighborhoodsRepository()
+    val neighborhoodsRepository = NeighborhoodsRepository(context)
+    
+    companion object {
+        // Toggle to switch between remote Supabase data and local mock data
+        // Set to true to test the Google Places cache
+        const val USE_REMOTE_DATA = true
+        private const val TAG = "PlacesRepository"
+    }
+    
+    // In-memory cache of all places for the city (loaded once per city)
+    private var cachedPlaces: List<AppPlace>? = null
+    private var cachedCityId: String? = null
+    private var cacheLoaded = false
+    
+    // Current city ID (can be changed via prefetch or directly set)
+    var currentCityId: String = "san_francisco"
 
     init {
         if (!Places.isInitialized()) {
@@ -32,26 +47,196 @@ class PlacesRepository(private val context: Context) {
     // San Francisco center coordinates
     private val SF_CENTER = LatLng(37.7749, -122.4194)
     
+    // Quick stops repository for prefetching
+    private val quickStopsRepository = QuickStopsRepository()
+    
     /**
-     * Auto-assign neighborhood based on coordinates.
-     * Uses the city-aware neighborhood lookup.
+     * Prefetch places for a city in background.
+     * Call this when user selects a city to have data ready by itinerary time.
      */
-    private fun AppPlace.withNeighborhood(): AppPlace {
-        // Auto-detect city from coordinates and find nearest neighborhood
-        val city = neighborhoodsRepository.detectCity(this.lat, this.lng)
-        val neighborhood = if (city != null) {
-            neighborhoodsRepository.findNearestNeighborhood(city.id, this.lat, this.lng)
-        } else {
-            neighborhoodsRepository.findNearestNeighborhood(this.lat, this.lng)
+    suspend fun prefetchForCity(cityId: String) {
+        Log.d(TAG, "Prefetching places for $cityId...")
+        currentCityId = cityId
+        
+        // Clear cache if city changed
+        if (cachedCityId != cityId) {
+            cachedPlaces = null
+            cacheLoaded = false
         }
-        return this.copy(neighborhood = neighborhood?.id)
+        
+        // Load in background
+        loadRemotePlaces()
+        
+        // Also prefetch neighborhoods
+        neighborhoodsRepository.getNeighborhoodsForCityAsync(cityId)
+        
+        // Prefetch quick stops (viewpoints, photo spots, street art)
+        quickStopsRepository.loadQuickStops(cityId)
+        
+        Log.d(TAG, "Prefetch complete for $cityId: ${cachedPlaces?.size ?: 0} places")
     }
     
     /**
-     * Apply both type defaults and neighborhood assignment.
+     * Get all cached places for the current city.
+     * Returns empty list if not loaded yet.
+     */
+    fun getCachedPlaces(): List<AppPlace> = cachedPlaces ?: emptyList()
+    
+    /**
+     * Load all places from Supabase for the current city.
+     * Called once, then filters locally for each search method.
+     * Filters out permanently closed and stale venues (not verified in 90 days).
+     */
+    private suspend fun loadRemotePlaces(): List<AppPlace> {
+        // Return cached if we have it for current city
+        if (cachedPlaces != null && cachedCityId == currentCityId) {
+            return cachedPlaces!!
+        }
+        
+        Log.d(TAG, "Loading places from Supabase for $currentCityId...")
+        val remotePlaces = SupabaseClient.getAllPlaces(currentCityId)
+        Log.d(TAG, "Loaded ${remotePlaces.size} places from Supabase")
+        
+        // Filter out stale and permanently closed places, then convert
+        val freshPlaces = remotePlaces.filterNot { isStale(it) }
+        val staleCount = remotePlaces.size - freshPlaces.size
+        if (staleCount > 0) {
+            Log.d(TAG, "Filtered out $staleCount stale/closed places")
+        }
+        
+        // Convert to app Place objects
+        cachedPlaces = freshPlaces.mapNotNull { remote ->
+            try {
+                convertToAppPlace(remote)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to convert place: ${remote.name}", e)
+                null
+            }
+        }.applyAllDefaults()
+        
+        cachedCityId = currentCityId
+        
+        // Log breakdown by type
+        cachedPlaces?.groupBy { it.type }?.forEach { (type, places) ->
+            Log.d(TAG, "  $type: ${places.size} places")
+        }
+        
+        cacheLoaded = true
+        return cachedPlaces!!
+    }
+    
+    /**
+     * Convert Supabase cached place to app Place model.
+     */
+    private fun convertToAppPlace(remote: SupabaseCachedPlace): AppPlace {
+        val placeType = when (remote.placeType) {
+            "RESTAURANT" -> PlaceType.RESTAURANT
+            "MUSEUM" -> PlaceType.MUSEUM
+            "PARK" -> PlaceType.PARK
+            "NIGHTLIFE" -> PlaceType.NIGHTLIFE
+            "SHOPPING" -> PlaceType.SHOPPING
+            "WELLNESS" -> PlaceType.WELLNESS
+            "ENTERTAINMENT" -> PlaceType.ENTERTAINMENT
+            "HISTORIC_SITE" -> PlaceType.HISTORIC_SITE
+            "WATERFRONT" -> PlaceType.WATERFRONT
+            "OUTDOOR" -> PlaceType.OUTDOOR
+            "BREWERY" -> PlaceType.BREWERY
+            "GAMES" -> PlaceType.GAMES
+            "CLASS" -> PlaceType.CLASS
+            "MARKET" -> PlaceType.MARKET
+            "SPORTS" -> PlaceType.SPORTS
+            else -> PlaceType.MUSEUM // Default fallback
+        }
+        
+        return AppPlace(
+            id = remote.id,
+            name = remote.name,
+            type = placeType,
+            lat = remote.lat,
+            lng = remote.lng,
+            rating = remote.rating?.toFloat() ?: 4.0f,
+            isOpen = !remote.isPermanentlyClosed, // Use permanently closed status
+            priceLevel = remote.priceLevel ?: 2,
+            estimatedCost = estimateCostFromPriceLevel(remote.priceLevel, placeType),
+            openHour = remote.openHour,
+            closeHour = remote.closeHour,
+            isOutdoor = remote.isOutdoor,
+            neighborhood = remote.neighborhoodId,
+            reviewCount = remote.reviewCount,
+            nightlifeCategory = remote.nightlifeCategory
+        )
+    }
+    
+    /**
+     * Check if a place is stale (not verified within 90 days).
+     * Returns true if the place should be filtered out.
+     */
+    private fun isStale(remote: SupabaseCachedPlace): Boolean {
+        // Filter out permanently closed places
+        if (remote.isPermanentlyClosed) return true
+        
+        // Check last_verified_at for staleness (90 days)
+        val lastVerified = remote.lastVerifiedAt ?: return false // No timestamp = not stale
+        return try {
+            val verifiedTime = java.time.Instant.parse(lastVerified)
+            val ninetyDaysAgo = java.time.Instant.now().minus(java.time.Duration.ofDays(90))
+            verifiedTime.isBefore(ninetyDaysAgo)
+        } catch (e: Exception) {
+            false // If parsing fails, don't filter out
+        }
+    }
+    
+    /**
+     * Estimate cost based on price level and place type.
+     */
+    private fun estimateCostFromPriceLevel(priceLevel: Int?, placeType: PlaceType): Int {
+        val level = priceLevel ?: 2
+        return when (placeType) {
+            PlaceType.RESTAURANT -> when (level) {
+                1 -> 15
+                2 -> 30
+                3 -> 50
+                4 -> 80
+                else -> 25
+            }
+            PlaceType.MUSEUM -> when (level) {
+                1 -> 0
+                2 -> 20
+                3 -> 30
+                else -> 15
+            }
+            PlaceType.NIGHTLIFE -> when (level) {
+                1 -> 15
+                2 -> 30
+                3 -> 50
+                else -> 25
+            }
+            PlaceType.WELLNESS -> when (level) {
+                1 -> 30
+                2 -> 60
+                3 -> 100
+                4 -> 150
+                else -> 50
+            }
+            else -> 0 // Parks, waterfront, etc. are free
+        }
+    }
+    
+    /**
+     * Filter cached places by type.
+     */
+    private suspend fun getPlacesByType(vararg types: PlaceType): List<AppPlace> {
+        val allPlaces = loadRemotePlaces()
+        return allPlaces.filter { it.type in types }
+    }
+    
+    /**
+     * Apply type defaults only.
+     * Neighborhood assignment is now handled by Supabase (single source of truth).
+     * See: sync-places Edge Function for neighborhood assignment logic.
      */
     private fun AppPlace.withAllDefaults(): AppPlace {
-        return this.withTypeDefaults().withNeighborhood()
+        return this.withTypeDefaults()
     }
     
     private fun List<AppPlace>.applyAllDefaults(): List<AppPlace> = map { it.withAllDefaults() }
@@ -158,7 +343,18 @@ class PlacesRepository(private val context: Context) {
     private fun List<AppPlace>.applyTypeDefaults(): List<AppPlace> = map { it.withAllDefaults() }
 
     suspend fun searchMuseums(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for museums in SF")
+        Log.d("PlacesRepository", "Searching for museums (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.MUSEUM)
+            Log.d("PlacesRepository", "Found ${places.size} museums from remote")
+            return places // Don't fallback to SF mock data for other cities
+        }
+        
+        return getMockMuseums()
+    }
+    
+    private fun getMockMuseums(): List<AppPlace> {
         return listOf<AppPlace>(
             // North SF - Fisherman's Wharf / Marina
             AppPlace("maritime_museum", "Maritime Museum", PlaceType.MUSEUM, 37.8088, -122.4229, 4.5f, true, 2, 15),
@@ -256,7 +452,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchParks(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for parks in SF")
+        Log.d("PlacesRepository", "Searching for parks (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.PARK)
+            Log.d("PlacesRepository", "Found ${places.size} parks from remote")
+            return places
+        }
+        
+        return getMockParks()
+    }
+    
+    private fun getMockParks(): List<AppPlace> {
         return listOf<AppPlace>(
             // Golden Gate Park Area - Famous spots with high review counts
             AppPlace("ggpark", "Golden Gate Park", PlaceType.PARK, 37.7694, -122.4862, 4.8f, true, 0, 0, reviewCount = 5000),
@@ -345,7 +552,20 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchRestaurants(cuisineTypes: List<String>): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for restaurants: ${if (cuisineTypes.isEmpty()) "ALL" else cuisineTypes}")
+        Log.d("PlacesRepository", "Searching for restaurants (city=$currentCityId, cuisines=${if (cuisineTypes.isEmpty()) "ALL" else cuisineTypes}, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            // Remote data doesn't have cuisine types - return all restaurants
+            // The app's quality scoring will handle selection
+            val places = getPlacesByType(PlaceType.RESTAURANT)
+            Log.d("PlacesRepository", "Found ${places.size} restaurants from remote")
+            return places
+        }
+        
+        return getMockRestaurants(cuisineTypes)
+    }
+    
+    private fun getMockRestaurants(cuisineTypes: List<String>): List<AppPlace> {
         val allRestaurants = mutableListOf<AppPlace>()
         
         // If no cuisine types specified, include all cuisines
@@ -729,7 +949,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchWaterfront(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for waterfront locations in SF")
+        Log.d("PlacesRepository", "Searching for waterfront (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.WATERFRONT)
+            Log.d("PlacesRepository", "Found ${places.size} waterfront locations from remote")
+            return places
+        }
+        
+        return getMockWaterfront()
+    }
+    
+    private fun getMockWaterfront(): List<AppPlace> {
         return listOf<AppPlace>(
             // Northern Waterfront
             AppPlace("fishermans_wharf", "Fisherman's Wharf", PlaceType.WATERFRONT, 37.8080, -122.4177, 4.4f, true, 0, 0),
@@ -769,7 +1000,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchHistoricSites(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for historic sites in SF")
+        Log.d("PlacesRepository", "Searching for historic sites (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.HISTORIC_SITE)
+            Log.d("PlacesRepository", "Found ${places.size} historic sites from remote")
+            return places
+        }
+        
+        return getMockHistoricSites()
+    }
+    
+    private fun getMockHistoricSites(): List<AppPlace> {
         return listOf<AppPlace>(
             // Mission District
             AppPlace("mission_dolores", "Mission Dolores", PlaceType.HISTORIC_SITE, 37.7637, -122.4268, 4.4f, true, 1, 10),
@@ -826,7 +1068,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchShopping(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for shopping areas in SF")
+        Log.d("PlacesRepository", "Searching for shopping (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.SHOPPING)
+            Log.d("PlacesRepository", "Found ${places.size} shopping locations from remote")
+            return places
+        }
+        
+        return getMockShopping()
+    }
+    
+    private fun getMockShopping(): List<AppPlace> {
         return listOf<AppPlace>(
             // Downtown / Union Square
             AppPlace("union_square", "Union Square", PlaceType.SHOPPING, 37.7879, -122.4075, 4.3f, true, 0, 0),
@@ -880,7 +1133,51 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchNightlife(nightlifeTypes: List<String>): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for nightlife in SF: $nightlifeTypes")
+        Log.d("PlacesRepository", "Searching for nightlife (city=$currentCityId, types=$nightlifeTypes, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val allNightlife = getPlacesByType(PlaceType.NIGHTLIFE)
+            
+            // If no specific types requested, return all nightlife
+            if (nightlifeTypes.isEmpty()) {
+                Log.d("PlacesRepository", "Found ${allNightlife.size} nightlife venues from remote (no filter)")
+                return allNightlife
+            }
+            
+            // Map user-facing types to database category names
+            val categoryMap = mapOf(
+                "bars" to listOf("bar"),
+                "cocktail_bars" to listOf("cocktail_bar"),
+                "clubs" to listOf("club", "night_club"),
+                "live_music" to listOf("live_music"),
+                "dive_bars" to listOf("dive_bar"),
+                "rooftop_bars" to listOf("rooftop_bar"),
+                "wine_bars" to listOf("wine_bar"),
+                "sports_bars" to listOf("sports_bar"),
+                "breweries" to listOf("brewery"),
+                "karaoke" to listOf("karaoke")
+            )
+            
+            // Get all matching categories
+            val matchingCategories = nightlifeTypes.flatMap { type ->
+                categoryMap[type] ?: listOf(type)
+            }.toSet()
+            
+            // Filter by category
+            val filtered = allNightlife.filter { place ->
+                // Include if no category (legacy data) or if category matches
+                place.nightlifeCategory == null || 
+                place.nightlifeCategory in matchingCategories
+            }
+            
+            Log.d("PlacesRepository", "Found ${filtered.size}/${allNightlife.size} nightlife venues matching categories: $matchingCategories")
+            return filtered
+        }
+        
+        return getMockNightlife(nightlifeTypes)
+    }
+    
+    private fun getMockNightlife(nightlifeTypes: List<String>): List<AppPlace> {
         val allNightlife = mutableListOf<AppPlace>()
         
         if (nightlifeTypes.contains("bars")) {
@@ -1001,7 +1298,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchEntertainment(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for entertainment in SF")
+        Log.d("PlacesRepository", "Searching for entertainment (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.ENTERTAINMENT)
+            Log.d("PlacesRepository", "Found ${places.size} entertainment venues from remote")
+            return places
+        }
+        
+        return getMockEntertainment()
+    }
+    
+    private fun getMockEntertainment(): List<AppPlace> {
         return listOf<AppPlace>(
             // Comedy Clubs
             AppPlace("cobbs_comedy", "Cobb's Comedy Club", PlaceType.ENTERTAINMENT, 37.8058, -122.4214, 4.6f, true, 2, 30),
@@ -1026,7 +1334,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchGames(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for games/fun in SF")
+        Log.d("PlacesRepository", "Searching for games (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.GAMES)
+            Log.d("PlacesRepository", "Found ${places.size} game venues from remote")
+            return places
+        }
+        
+        return getMockGames()
+    }
+    
+    private fun getMockGames(): List<AppPlace> {
         return listOf<AppPlace>(
             // Escape Rooms
             AppPlace("escape_sf", "Escape SF", PlaceType.GAMES, 37.7869, -122.4064, 4.5f, true, 2, 35),
@@ -1049,7 +1368,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchOutdoor(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for outdoor activities in SF")
+        Log.d("PlacesRepository", "Searching for outdoor activities (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.OUTDOOR)
+            Log.d("PlacesRepository", "Found ${places.size} outdoor activities from remote")
+            return places
+        }
+        
+        return getMockOutdoor()
+    }
+    
+    private fun getMockOutdoor(): List<AppPlace> {
         return listOf<AppPlace>(
             // Kayaking / Water
             AppPlace("city_kayak", "City Kayak", PlaceType.OUTDOOR, 37.7785, -122.3880, 4.5f, true, 2, 60),
@@ -1073,7 +1403,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchWellness(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for wellness in SF")
+        Log.d("PlacesRepository", "Searching for wellness (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.WELLNESS)
+            Log.d("PlacesRepository", "Found ${places.size} wellness venues from remote")
+            return places
+        }
+        
+        return getMockWellness()
+    }
+    
+    private fun getMockWellness(): List<AppPlace> {
         return listOf<AppPlace>(
             // Spas / Bathhouses
             AppPlace("kabuki_springs", "Kabuki Springs & Spa", PlaceType.WELLNESS, 37.7851, -122.4307, 4.7f, true, 2, 45),
@@ -1092,7 +1433,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchBreweries(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for breweries in SF")
+        Log.d("PlacesRepository", "Searching for breweries (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.BREWERY)
+            Log.d("PlacesRepository", "Found ${places.size} breweries from remote")
+            return places
+        }
+        
+        return getMockBreweries()
+    }
+    
+    private fun getMockBreweries(): List<AppPlace> {
         return listOf<AppPlace>(
             // Breweries
             AppPlace("anchor_brewing", "Anchor Brewing Company", PlaceType.BREWERY, 37.7645, -122.4003, 4.7f, true, 2, 25),
@@ -1113,7 +1465,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchClasses(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for classes in SF")
+        Log.d("PlacesRepository", "Searching for classes (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.CLASS)
+            Log.d("PlacesRepository", "Found ${places.size} class venues from remote")
+            return places
+        }
+        
+        return getMockClasses()
+    }
+    
+    private fun getMockClasses(): List<AppPlace> {
         return listOf<AppPlace>(
             // Cooking Classes
             AppPlace("sur_la_table", "Sur La Table Cooking Class", PlaceType.CLASS, 37.7956, -122.3935, 4.5f, true, 2, 85),
@@ -1132,7 +1495,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchMarkets(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for markets in SF")
+        Log.d("PlacesRepository", "Searching for markets (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.MARKET)
+            Log.d("PlacesRepository", "Found ${places.size} markets from remote")
+            return places
+        }
+        
+        return getMockMarkets()
+    }
+    
+    private fun getMockMarkets(): List<AppPlace> {
         return listOf<AppPlace>(
             // Farmers Markets
             AppPlace("ferry_farmers", "Ferry Plaza Farmers Market", PlaceType.MARKET, 37.7956, -122.3935, 4.8f, true, 0, 0),
@@ -1149,7 +1523,18 @@ class PlacesRepository(private val context: Context) {
     }
 
     suspend fun searchSports(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for sports in SF")
+        Log.d("PlacesRepository", "Searching for sports (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+        
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.SPORTS)
+            Log.d("PlacesRepository", "Found ${places.size} sports venues from remote")
+            return places
+        }
+        
+        return getMockSports()
+    }
+    
+    private fun getMockSports(): List<AppPlace> {
         return listOf<AppPlace>(
             // Golf
             AppPlace("presidio_golf", "Presidio Golf Course", PlaceType.SPORTS, 37.7880, -122.4612, 4.5f, true, 2, 80),
