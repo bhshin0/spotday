@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.spotday.app.model.ExplorationMode
 import com.spotday.app.ui.theme.SpotDayTheme
+import com.spotday.app.util.PreferencesManager
 
 class WelcomeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,12 +38,50 @@ class WelcomeActivity : ComponentActivity() {
 @Composable
 fun WelcomeScreen() {
     val context = LocalContext.current
-    var isSpontaneousMode by remember { mutableStateOf(false) }
-    var timeRange by remember { mutableStateOf(9f..17f) } // 9 AM to 5 PM default
-    var durationHours by remember { mutableStateOf(4f) } // For spontaneous mode
-    var budget by remember { mutableStateOf(100) }
-    var isHungryNow by remember { mutableStateOf(false) }
-    var explorationMode by remember { mutableStateOf(ExplorationMode.ONE_AREA) }
+    val preferencesManager = remember { PreferencesManager(context) }
+    
+    // Load saved preferences
+    var isSpontaneousMode by remember { mutableStateOf(preferencesManager.getSpontaneousMode()) }
+    var timeRange by remember { 
+        mutableStateOf(preferencesManager.getTimeRangeStart()..preferencesManager.getTimeRangeEnd()) 
+    }
+    var durationHours by remember { mutableStateOf(preferencesManager.getDurationHours()) }
+    var budget by remember { mutableStateOf(preferencesManager.getBudget()) }
+    var isHungryNow by remember { mutableStateOf(preferencesManager.getHungryNow()) }
+    var explorationMode by remember { 
+        mutableStateOf(
+            try {
+                ExplorationMode.valueOf(preferencesManager.getExplorationMode())
+            } catch (e: Exception) {
+                ExplorationMode.ONE_AREA
+            }
+        )
+    }
+    
+    // Save preferences whenever they change
+    LaunchedEffect(isSpontaneousMode) {
+        preferencesManager.saveSpontaneousMode(isSpontaneousMode)
+    }
+    
+    LaunchedEffect(timeRange) {
+        preferencesManager.saveTimeRange(timeRange.start, timeRange.endInclusive)
+    }
+    
+    LaunchedEffect(durationHours) {
+        preferencesManager.saveDurationHours(durationHours)
+    }
+    
+    LaunchedEffect(budget) {
+        preferencesManager.saveBudget(budget)
+    }
+    
+    LaunchedEffect(isHungryNow) {
+        preferencesManager.saveHungryNow(isHungryNow)
+    }
+    
+    LaunchedEffect(explorationMode) {
+        preferencesManager.saveExplorationMode(explorationMode.name)
+    }
     
     // Calculate total hours for current time selection
     val totalHours = if (isSpontaneousMode) {

@@ -163,12 +163,12 @@ class PlacesRepository(private val context: Context) {
             // North SF - Fisherman's Wharf / Marina
             AppPlace("maritime_museum", "Maritime Museum", PlaceType.MUSEUM, 37.8088, -122.4229, 4.5f, true, 2, 15),
             AppPlace("wax_museum", "Wax Museum at Fisherman's Wharf", PlaceType.MUSEUM, 37.8098, -122.4166, 4.2f, true, 2, 25),
-            AppPlace("exploratorium", "Exploratorium", PlaceType.MUSEUM, 37.8014, -122.3975, 4.6f, true, 2, 30),
-            AppPlace("palace_fine_arts", "Palace of Fine Arts", PlaceType.MUSEUM, 37.8033, -122.4477, 4.7f, true, 1, 0),
+            AppPlace("exploratorium", "Exploratorium", PlaceType.MUSEUM, 37.8014, -122.3975, 4.6f, true, 2, 30, reviewCount = 3500),
+            AppPlace("palace_fine_arts", "Palace of Fine Arts", PlaceType.MUSEUM, 37.8033, -122.4477, 4.7f, true, 1, 0, reviewCount = 4000),
             AppPlace("fort_mason", "Fort Mason Center", PlaceType.MUSEUM, 37.8055, -122.4315, 4.4f, true, 1, 10),
             
             // Central SF - Downtown / SoMa
-            AppPlace("sfmoma", "San Francisco Museum of Modern Art", PlaceType.MUSEUM, 37.7857, -122.4011, 4.6f, true, 2, 25),
+            AppPlace("sfmoma", "San Francisco Museum of Modern Art", PlaceType.MUSEUM, 37.7857, -122.4011, 4.6f, true, 2, 25, reviewCount = 4000),
             AppPlace("jewish_museum", "Contemporary Jewish Museum", PlaceType.MUSEUM, 37.7847, -122.4020, 4.3f, true, 2, 15),
             AppPlace("cartoon_art", "Cartoon Art Museum", PlaceType.MUSEUM, 37.7826, -122.4025, 4.4f, true, 2, 10),
             AppPlace("museum_craft", "Museum of Craft and Design", PlaceType.MUSEUM, 37.7751, -122.3985, 4.2f, true, 2, 12),
@@ -183,9 +183,9 @@ class PlacesRepository(private val context: Context) {
             AppPlace("precita_eyes", "Precita Eyes Mural Arts Center", PlaceType.MUSEUM, 37.7478, -122.4148, 4.5f, true, 1, 15),
             
             // Golden Gate Park Area
-            AppPlace("deyoung", "de Young Museum", PlaceType.MUSEUM, 37.7714, -122.4686, 4.6f, true, 2, 25),
-            AppPlace("calacdemy", "California Academy of Sciences", PlaceType.MUSEUM, 37.7699, -122.4661, 4.7f, true, 2, 30),
-            AppPlace("legion_honor", "Legion of Honor", PlaceType.MUSEUM, 37.7849, -122.5001, 4.6f, true, 2, 20),
+            AppPlace("deyoung", "de Young Museum", PlaceType.MUSEUM, 37.7714, -122.4686, 4.6f, true, 2, 25, reviewCount = 3000),
+            AppPlace("calacdemy", "California Academy of Sciences", PlaceType.MUSEUM, 37.7699, -122.4661, 4.7f, true, 2, 30, reviewCount = 5000),
+            AppPlace("legion_honor", "Legion of Honor", PlaceType.MUSEUM, 37.7849, -122.5001, 4.6f, true, 2, 20, reviewCount = 1500),
             AppPlace("japanese_tea", "Japanese Tea Garden", PlaceType.MUSEUM, 37.7702, -122.4699, 4.6f, true, 1, 10),
             AppPlace("conservatory", "Conservatory of Flowers", PlaceType.MUSEUM, 37.7727, -122.4608, 4.6f, true, 1, 10),
             AppPlace("botanical_garden", "SF Botanical Garden", PlaceType.MUSEUM, 37.7677, -122.4736, 4.7f, true, 1, 10),
@@ -258,23 +258,23 @@ class PlacesRepository(private val context: Context) {
     suspend fun searchParks(): List<AppPlace> {
         Log.d("PlacesRepository", "Searching for parks in SF")
         return listOf<AppPlace>(
-            // Golden Gate Park Area
-            AppPlace("ggpark", "Golden Gate Park", PlaceType.PARK, 37.7694, -122.4862, 4.8f, true, 0, 0),
-            AppPlace("stow_lake", "Stow Lake", PlaceType.PARK, 37.7694, -122.4780, 4.7f, true, 0, 0),
+            // Golden Gate Park Area - Famous spots with high review counts
+            AppPlace("ggpark", "Golden Gate Park", PlaceType.PARK, 37.7694, -122.4862, 4.8f, true, 0, 0, reviewCount = 5000),
+            AppPlace("stow_lake", "Stow Lake", PlaceType.PARK, 37.7694, -122.4780, 4.7f, true, 0, 0, reviewCount = 1500),
             AppPlace("ggpark_polo", "Polo Fields", PlaceType.PARK, 37.7705, -122.4925, 4.5f, true, 0, 0),
             AppPlace("windmills", "Dutch Windmill Area", PlaceType.PARK, 37.7711, -122.5093, 4.6f, true, 0, 0),
             AppPlace("music_concourse", "Music Concourse", PlaceType.PARK, 37.7708, -122.4683, 4.5f, true, 0, 0),
             
             // Northern Waterfront
-            AppPlace("crissy", "Crissy Field", PlaceType.PARK, 37.8050, -122.4650, 4.7f, true, 0, 0),
-            AppPlace("presidio", "Presidio National Park", PlaceType.PARK, 37.7989, -122.4662, 4.8f, true, 0, 0),
+            AppPlace("crissy", "Crissy Field", PlaceType.PARK, 37.8050, -122.4650, 4.7f, true, 0, 0, reviewCount = 2500),
+            AppPlace("presidio", "Presidio National Park", PlaceType.PARK, 37.7989, -122.4662, 4.8f, true, 0, 0, reviewCount = 3000),
             AppPlace("fort_point", "Fort Point Area", PlaceType.PARK, 37.8108, -122.4764, 4.7f, true, 0, 0),
             AppPlace("bakers_beach", "Baker Beach", PlaceType.PARK, 37.7930, -122.4836, 4.7f, true, 0, 0),
             AppPlace("marina_green", "Marina Green", PlaceType.PARK, 37.8038, -122.4388, 4.6f, true, 0, 0),
             AppPlace("fort_mason_park", "Fort Mason Gardens", PlaceType.PARK, 37.8062, -122.4313, 4.5f, true, 0, 0),
             
             // Mission / Castro
-            AppPlace("dolores", "Dolores Park", PlaceType.PARK, 37.7596, -122.4269, 4.7f, true, 0, 0),
+            AppPlace("dolores", "Dolores Park", PlaceType.PARK, 37.7596, -122.4269, 4.7f, true, 0, 0, reviewCount = 3500),
             AppPlace("mission_playground", "Mission Playground", PlaceType.PARK, 37.7543, -122.4152, 4.4f, true, 0, 0),
             AppPlace("balboa_park", "Balboa Park", PlaceType.PARK, 37.7211, -122.4450, 4.5f, true, 0, 0),
             AppPlace("glen_canyon", "Glen Canyon Park", PlaceType.PARK, 37.7419, -122.4418, 4.6f, true, 0, 0),
@@ -310,7 +310,7 @@ class PlacesRepository(private val context: Context) {
             AppPlace("telegraph_hill", "Telegraph Hill Park", PlaceType.PARK, 37.8015, -122.4065, 4.6f, true, 0, 0),
             
             // Various
-            AppPlace("twin_peaks", "Twin Peaks", PlaceType.PARK, 37.7544, -122.4477, 4.8f, true, 0, 0),
+            AppPlace("twin_peaks", "Twin Peaks", PlaceType.PARK, 37.7544, -122.4477, 4.8f, true, 0, 0, reviewCount = 2800),
             AppPlace("mt_davidson", "Mount Davidson Park", PlaceType.PARK, 37.7382, -122.4550, 4.6f, true, 0, 0),
             AppPlace("lake_merced", "Lake Merced Park", PlaceType.PARK, 37.7167, -122.4871, 4.6f, true, 0, 0),
             AppPlace("stern_grove", "Stern Grove", PlaceType.PARK, 37.7290, -122.4743, 4.7f, true, 0, 0),
@@ -358,17 +358,17 @@ class PlacesRepository(private val context: Context) {
         if (effectiveCuisines.contains("italian")) {
             allRestaurants.addAll(
                 listOf(
-                    // North Beach (Italian Hub)
-                    AppPlace("flour_water", "Flour + Water", PlaceType.RESTAURANT, 37.7616, -122.4094, 4.5f, true, 2, 30),
-                    AppPlace("tony_pizza", "Tony's Pizza Napoletana", PlaceType.RESTAURANT, 37.7980, -122.4094, 4.6f, true, 2, 25),
-                    AppPlace("sotto_mare", "Sotto Mare", PlaceType.RESTAURANT, 37.8008, -122.4102, 4.5f, true, 2, 35),
-                    AppPlace("golden_boy", "Golden Boy Pizza", PlaceType.RESTAURANT, 37.7990, -122.4080, 4.5f, true, 1, 15),
-                    AppPlace("original_joes", "Original Joe's", PlaceType.RESTAURANT, 37.7991, -122.4096, 4.4f, true, 2, 30),
+                    // North Beach (Italian Hub) - Famous spots with high review counts
+                    AppPlace("flour_water", "Flour + Water", PlaceType.RESTAURANT, 37.7616, -122.4094, 4.5f, true, 2, 30, reviewCount = 3500),
+                    AppPlace("tony_pizza", "Tony's Pizza Napoletana", PlaceType.RESTAURANT, 37.7980, -122.4094, 4.6f, true, 2, 25, reviewCount = 4500),
+                    AppPlace("sotto_mare", "Sotto Mare", PlaceType.RESTAURANT, 37.8008, -122.4102, 4.5f, true, 2, 35, reviewCount = 2200),
+                    AppPlace("golden_boy", "Golden Boy Pizza", PlaceType.RESTAURANT, 37.7990, -122.4080, 4.5f, true, 1, 15, reviewCount = 1800),
+                    AppPlace("original_joes", "Original Joe's", PlaceType.RESTAURANT, 37.7991, -122.4096, 4.4f, true, 2, 30, reviewCount = 1500),
                     AppPlace("caffe_sport", "Caffe Sport", PlaceType.RESTAURANT, 37.8007, -122.4101, 4.3f, true, 2, 28),
-                    AppPlace("mama_sf", "Mama's on Washington Square", PlaceType.RESTAURANT, 37.7999, -122.4105, 4.6f, true, 2, 20),
+                    AppPlace("mama_sf", "Mama's on Washington Square", PlaceType.RESTAURANT, 37.7999, -122.4105, 4.6f, true, 2, 20, reviewCount = 3000),
                     AppPlace("calzone", "Calzone's", PlaceType.RESTAURANT, 37.8004, -122.4084, 4.4f, true, 2, 22),
-                    AppPlace("molinari", "Molinari Delicatessen", PlaceType.RESTAURANT, 37.7998, -122.4089, 4.7f, true, 1, 18),
-                    AppPlace("liguria_bakery", "Liguria Bakery", PlaceType.RESTAURANT, 37.7987, -122.4093, 4.6f, true, 1, 12),
+                    AppPlace("molinari", "Molinari Delicatessen", PlaceType.RESTAURANT, 37.7998, -122.4089, 4.7f, true, 1, 18, reviewCount = 2500),
+                    AppPlace("liguria_bakery", "Liguria Bakery", PlaceType.RESTAURANT, 37.7987, -122.4093, 4.6f, true, 1, 12, reviewCount = 1200),
                     // Marina / Cow Hollow
                     AppPlace("delarosa", "Delarosa", PlaceType.RESTAURANT, 37.7989, -122.4354, 4.4f, true, 2, 25),
                     AppPlace("a16", "A16", PlaceType.RESTAURANT, 37.7999, -122.4358, 4.5f, true, 2, 32),
@@ -377,13 +377,13 @@ class PlacesRepository(private val context: Context) {
                     AppPlace("pazzia", "Pazzia Restaurant & Pizzeria", PlaceType.RESTAURANT, 37.7715, -122.4700, 4.3f, true, 2, 25),
                     AppPlace("picas", "Pica's", PlaceType.RESTAURANT, 37.7791, -122.4629, 4.4f, true, 1, 20),
                     // Mission
-                    AppPlace("beretta", "Beretta", PlaceType.RESTAURANT, 37.7589, -122.4213, 4.4f, true, 2, 28),
-                    AppPlace("delfina", "Delfina", PlaceType.RESTAURANT, 37.7612, -122.4179, 4.6f, true, 2, 35),
-                    AppPlace("pizzeria_delfina", "Pizzeria Delfina", PlaceType.RESTAURANT, 37.7594, -122.4261, 4.5f, true, 2, 22),
-                    AppPlace("locanda", "Locanda", PlaceType.RESTAURANT, 37.7590, -122.4212, 4.5f, true, 2, 30),
+                    AppPlace("beretta", "Beretta", PlaceType.RESTAURANT, 37.7589, -122.4213, 4.4f, true, 2, 28, reviewCount = 1200),
+                    AppPlace("delfina", "Delfina", PlaceType.RESTAURANT, 37.7612, -122.4179, 4.6f, true, 2, 35, reviewCount = 1800),
+                    AppPlace("pizzeria_delfina", "Pizzeria Delfina", PlaceType.RESTAURANT, 37.7594, -122.4261, 4.5f, true, 2, 22, reviewCount = 1500),
+                    AppPlace("locanda", "Locanda", PlaceType.RESTAURANT, 37.7590, -122.4212, 4.5f, true, 2, 30, reviewCount = 800),
                     // SoMa / Downtown
-                    AppPlace("perbacco", "Perbacco", PlaceType.RESTAURANT, 37.7906, -122.4024, 4.5f, true, 2, 32),
-                    AppPlace("cotogna", "Cotogna", PlaceType.RESTAURANT, 37.7970, -122.4032, 4.6f, true, 2, 35),
+                    AppPlace("perbacco", "Perbacco", PlaceType.RESTAURANT, 37.7906, -122.4024, 4.5f, true, 2, 32, reviewCount = 900),
+                    AppPlace("cotogna", "Cotogna", PlaceType.RESTAURANT, 37.7970, -122.4032, 4.6f, true, 2, 35, reviewCount = 1500),
                     AppPlace("ideale", "Ideale", PlaceType.RESTAURANT, 37.7826, -122.4098, 4.3f, true, 2, 28),
                     // Nob Hill
                     AppPlace("acquerello", "Acquerello", PlaceType.RESTAURANT, 37.7925, -122.4166, 4.7f, true, 3, 45),
@@ -419,16 +419,16 @@ class PlacesRepository(private val context: Context) {
         if (effectiveCuisines.contains("mexican")) {
             allRestaurants.addAll(
                 listOf(
-                    // Mission District (Mexican Hub)
-                    AppPlace("la_taqueria", "La Taqueria", PlaceType.RESTAURANT, 37.7508, -122.4183, 4.6f, true, 1, 15),
-                    AppPlace("el_farolito", "El Farolito", PlaceType.RESTAURANT, 37.7479, -122.4176, 4.5f, true, 1, 12),
-                    AppPlace("la_palma", "La Palma Mexicatessen", PlaceType.RESTAURANT, 37.7528, -122.4172, 4.5f, true, 1, 14),
-                    AppPlace("taqueria_cancun", "Taqueria Cancun", PlaceType.RESTAURANT, 37.7498, -122.4192, 4.4f, true, 1, 13),
-                    AppPlace("pancho_villa", "Pancho Villa Taqueria", PlaceType.RESTAURANT, 37.7514, -122.4171, 4.3f, true, 1, 14),
-                    AppPlace("papalote", "Papalote Mexican Grill", PlaceType.RESTAURANT, 37.7616, -122.4252, 4.4f, true, 2, 18),
-                    AppPlace("gracias_madre", "Gracias Madre", PlaceType.RESTAURANT, 37.7622, -122.4245, 4.4f, true, 2, 28),
-                    AppPlace("nopalito", "Nopalito", PlaceType.RESTAURANT, 37.7695, -122.4887, 4.4f, true, 2, 25),
-                    AppPlace("tacolicious", "Tacolicious Mission", PlaceType.RESTAURANT, 37.7499, -122.4191, 4.3f, true, 2, 20),
+                    // Mission District (Mexican Hub) - Famous spots with high review counts
+                    AppPlace("la_taqueria", "La Taqueria", PlaceType.RESTAURANT, 37.7508, -122.4183, 4.6f, true, 1, 15, reviewCount = 5000),
+                    AppPlace("el_farolito", "El Farolito", PlaceType.RESTAURANT, 37.7479, -122.4176, 4.5f, true, 1, 12, reviewCount = 3000),
+                    AppPlace("la_palma", "La Palma Mexicatessen", PlaceType.RESTAURANT, 37.7528, -122.4172, 4.5f, true, 1, 14, reviewCount = 1200),
+                    AppPlace("taqueria_cancun", "Taqueria Cancun", PlaceType.RESTAURANT, 37.7498, -122.4192, 4.4f, true, 1, 13, reviewCount = 2000),
+                    AppPlace("pancho_villa", "Pancho Villa Taqueria", PlaceType.RESTAURANT, 37.7514, -122.4171, 4.3f, true, 1, 14, reviewCount = 1800),
+                    AppPlace("papalote", "Papalote Mexican Grill", PlaceType.RESTAURANT, 37.7616, -122.4252, 4.4f, true, 2, 18, reviewCount = 1500),
+                    AppPlace("gracias_madre", "Gracias Madre", PlaceType.RESTAURANT, 37.7622, -122.4245, 4.4f, true, 2, 28, reviewCount = 2000),
+                    AppPlace("nopalito", "Nopalito", PlaceType.RESTAURANT, 37.7695, -122.4887, 4.4f, true, 2, 25, reviewCount = 1600),
+                    AppPlace("tacolicious", "Tacolicious Mission", PlaceType.RESTAURANT, 37.7499, -122.4191, 4.3f, true, 2, 20, reviewCount = 1100),
                     AppPlace("lolos", "Lolo's", PlaceType.RESTAURANT, 37.7530, -122.4179, 4.5f, true, 1, 15),
                     AppPlace("el_tonayense", "El Tonayense", PlaceType.RESTAURANT, 37.7521, -122.4173, 4.4f, true, 1, 11),
                     AppPlace("taqueria_guadalajara", "Taqueria Guadalajara", PlaceType.RESTAURANT, 37.7526, -122.4188, 4.3f, true, 1, 12),
@@ -485,22 +485,22 @@ class PlacesRepository(private val context: Context) {
         if (effectiveCuisines.contains("american")) {
             allRestaurants.addAll(
                 listOf(
-                    // Downtown / Hayes Valley
-                    AppPlace("zuni", "Zuni Café", PlaceType.RESTAURANT, 37.7750, -122.4223, 4.5f, true, 2, 30),
-                    AppPlace("nopa", "NOPA", PlaceType.RESTAURANT, 37.7749, -122.4375, 4.4f, true, 2, 28),
-                    AppPlace("jardiniere", "Jardiniere", PlaceType.RESTAURANT, 37.7773, -122.4221, 4.5f, true, 3, 40),
-                    AppPlace("absinthe", "Absinthe Brasserie", PlaceType.RESTAURANT, 37.7760, -122.4237, 4.4f, true, 2, 32),
-                    AppPlace("rich_table", "Rich Table", PlaceType.RESTAURANT, 37.7765, -122.4229, 4.6f, true, 3, 45),
+                    // Downtown / Hayes Valley - Famous spots with high review counts
+                    AppPlace("zuni", "Zuni Café", PlaceType.RESTAURANT, 37.7750, -122.4223, 4.5f, true, 2, 30, reviewCount = 2500),
+                    AppPlace("nopa", "NOPA", PlaceType.RESTAURANT, 37.7749, -122.4375, 4.4f, true, 2, 28, reviewCount = 1800),
+                    AppPlace("jardiniere", "Jardiniere", PlaceType.RESTAURANT, 37.7773, -122.4221, 4.5f, true, 3, 40, reviewCount = 900),
+                    AppPlace("absinthe", "Absinthe Brasserie", PlaceType.RESTAURANT, 37.7760, -122.4237, 4.4f, true, 2, 32, reviewCount = 1400),
+                    AppPlace("rich_table", "Rich Table", PlaceType.RESTAURANT, 37.7765, -122.4229, 4.6f, true, 3, 45, reviewCount = 1200),
                     // Mission / Castro
-                    AppPlace("foreign_cinema", "Foreign Cinema", PlaceType.RESTAURANT, 37.7540, -122.4191, 4.5f, true, 2, 35),
-                    AppPlace("lazy_bear", "Lazy Bear", PlaceType.RESTAURANT, 37.7574, -122.4211, 4.6f, true, 3, 50),
-                    AppPlace("bar_tartine", "Bar Tartine", PlaceType.RESTAURANT, 37.7562, -122.4217, 4.4f, true, 2, 30),
-                    AppPlace("tartine_manufactory", "Tartine Manufactory", PlaceType.RESTAURANT, 37.7597, -122.4117, 4.5f, true, 2, 25),
-                    AppPlace("frances", "Frances", PlaceType.RESTAURANT, 37.7610, -122.4350, 4.6f, true, 2, 32),
+                    AppPlace("foreign_cinema", "Foreign Cinema", PlaceType.RESTAURANT, 37.7540, -122.4191, 4.5f, true, 2, 35, reviewCount = 2000),
+                    AppPlace("lazy_bear", "Lazy Bear", PlaceType.RESTAURANT, 37.7574, -122.4211, 4.6f, true, 3, 50, reviewCount = 1200),
+                    AppPlace("bar_tartine", "Bar Tartine", PlaceType.RESTAURANT, 37.7562, -122.4217, 4.4f, true, 2, 30, reviewCount = 1100),
+                    AppPlace("tartine_manufactory", "Tartine Manufactory", PlaceType.RESTAURANT, 37.7597, -122.4117, 4.5f, true, 2, 25, reviewCount = 3500),
+                    AppPlace("frances", "Frances", PlaceType.RESTAURANT, 37.7610, -122.4350, 4.6f, true, 2, 32, reviewCount = 1400),
                     // Outer Sunset
-                    AppPlace("outerlands", "Outerlands", PlaceType.RESTAURANT, 37.7609, -122.5096, 4.5f, true, 2, 25),
-                    AppPlace("trouble_coffee", "Trouble Coffee", PlaceType.RESTAURANT, 37.7604, -122.5110, 4.6f, true, 1, 12),
-                    AppPlace("devils_teeth", "Devil's Teeth Baking", PlaceType.RESTAURANT, 37.7606, -122.5094, 4.7f, true, 1, 15),
+                    AppPlace("outerlands", "Outerlands", PlaceType.RESTAURANT, 37.7609, -122.5096, 4.5f, true, 2, 25, reviewCount = 1800),
+                    AppPlace("trouble_coffee", "Trouble Coffee", PlaceType.RESTAURANT, 37.7604, -122.5110, 4.6f, true, 1, 12, reviewCount = 900),
+                    AppPlace("devils_teeth", "Devil's Teeth Baking", PlaceType.RESTAURANT, 37.7606, -122.5094, 4.7f, true, 1, 15, reviewCount = 1600),
                     // Marina / Cow Hollow
                     AppPlace("rose_pistola", "Rose's Cafe", PlaceType.RESTAURANT, 37.7995, -122.4308, 4.5f, true, 2, 28),
                     AppPlace("atelier_crenn", "Atelier Crenn", PlaceType.RESTAURANT, 37.7998, -122.4363, 4.8f, true, 4, 80),
@@ -518,8 +518,8 @@ class PlacesRepository(private val context: Context) {
                     // Potrero Hill
                     AppPlace("chez_papa_bistrot", "Chez Papa Bistrot", PlaceType.RESTAURANT, 37.7596, -122.4011, 4.4f, true, 2, 26),
                     // Richmond
-                    AppPlace("aziza", "Aziza", PlaceType.RESTAURANT, 37.7793, -122.4696, 4.6f, true, 3, 38),
-                    AppPlace("burma_superstar", "Burma Superstar", PlaceType.RESTAURANT, 37.7808, -122.4619, 4.5f, true, 2, 22),
+                    AppPlace("aziza", "Aziza", PlaceType.RESTAURANT, 37.7793, -122.4696, 4.6f, true, 3, 38, reviewCount = 800),
+                    AppPlace("burma_superstar", "Burma Superstar", PlaceType.RESTAURANT, 37.7808, -122.4619, 4.5f, true, 2, 22, reviewCount = 3500),
                     // Nob Hill
                     AppPlace("swan_oyster", "Swan Oyster Depot", PlaceType.RESTAURANT, 37.7921, -122.4202, 4.6f, true, 2, 30),
                     // Russian Hill
@@ -559,8 +559,8 @@ class PlacesRepository(private val context: Context) {
                     AppPlace("r&g_lounge", "R&G Lounge", PlaceType.RESTAURANT, 37.7949, -122.4061, 4.3f, true, 2, 28),
                     AppPlace("z&y", "Z & Y", PlaceType.RESTAURANT, 37.7964, -122.4069, 4.5f, true, 2, 24),
                     AppPlace("koi_palace", "Koi Palace", PlaceType.RESTAURANT, 37.7944, -122.4072, 4.4f, true, 2, 26),
-                    AppPlace("house_nanking", "House of Nanking", PlaceType.RESTAURANT, 37.7978, -122.4059, 4.3f, true, 1, 18),
-                    AppPlace("yank_sing", "Yank Sing", PlaceType.RESTAURANT, 37.7901, -122.3972, 4.5f, true, 2, 30),
+                    AppPlace("house_nanking", "House of Nanking", PlaceType.RESTAURANT, 37.7978, -122.4059, 4.3f, true, 1, 18, reviewCount = 2200),
+                    AppPlace("yank_sing", "Yank Sing", PlaceType.RESTAURANT, 37.7901, -122.3972, 4.5f, true, 2, 30, reviewCount = 2000),
                     AppPlace("lai_hong_lounge", "Lai Hong Lounge", PlaceType.RESTAURANT, 37.7955, -122.4067, 4.3f, true, 2, 22),
                     AppPlace("great_eastern", "Great Eastern", PlaceType.RESTAURANT, 37.7952, -122.4076, 4.3f, true, 2, 24),
                     AppPlace("hakkasan", "Hakkasan", PlaceType.RESTAURANT, 37.7887, -122.3998, 4.4f, true, 3, 45),

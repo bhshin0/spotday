@@ -42,6 +42,9 @@ android {
         // Add BuildConfig fields for API keys (reads from local.properties first, then gradle.properties)
         buildConfigField("String", "MAPS_API_KEY", "\"${getApiKey("MAPS_API_KEY")}\"")
         buildConfigField("String", "PLACES_API_KEY", "\"${getApiKey("PLACES_API_KEY")}\"")
+        buildConfigField("String", "TICKETMASTER_API_KEY", "\"${getApiKey("TICKETMASTER_API_KEY")}\"")
+        buildConfigField("String", "SUPABASE_URL", "\"${getApiKey("SUPABASE_URL")}\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${getApiKey("SUPABASE_ANON_KEY")}\"")
 
         // Add manifest placeholders for API keys
         manifestPlaceholders["MAPS_API_KEY"] = getApiKey("MAPS_API_KEY")
@@ -133,4 +136,10 @@ dependencies {
     
     // Places API
     implementation("com.google.android.libraries.places:places:3.3.0")
+    
+    // Supabase
+    implementation(platform("io.github.jan-tennert.supabase:bom:2.2.0"))
+    implementation("io.github.jan-tennert.supabase:postgrest-kt")
+    implementation("io.github.jan-tennert.supabase:realtime-kt")
+    implementation("io.ktor:ktor-client-android:2.3.7")
 } 

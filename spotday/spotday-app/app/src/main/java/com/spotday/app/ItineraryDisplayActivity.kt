@@ -128,21 +128,31 @@ class ItineraryViewModel(
     
     // Weather state - using regular vars to avoid Compose snapshot issues in coroutines
     // These will be passed explicitly to composables
-    private var _weatherForecast = WeatherHelper.getMockForecast()
+    private var _weatherForecast = WeatherHelper.getFallbackForecast()
     val weatherForecast: WeatherHelper.WeatherForecast get() = _weatherForecast
     
     private var _avoidOutdoor = false
     val avoidOutdoor: Boolean get() = _avoidOutdoor
     
     init {
-        _avoidOutdoor = WeatherHelper.shouldAvoidOutdoor(_weatherForecast)
-        Log.d("ItineraryViewModel", "Weather: ${_weatherForecast.description}, avoidOutdoor: $_avoidOutdoor")
-        generateItinerary(_avoidOutdoor)
+        // Fetch real weather, then generate itinerary
+        viewModelScope.launch {
+            try {
+                _weatherForecast = WeatherHelper.getForecast()
+                Log.d("ItineraryViewModel", "Weather fetched: ${_weatherForecast.description}, isFallback: ${_weatherForecast.isFallback}")
+            } catch (e: Exception) {
+                Log.w("ItineraryViewModel", "Failed to fetch weather, using fallback", e)
+                _weatherForecast = WeatherHelper.getFallbackForecast()
+            }
+            _avoidOutdoor = WeatherHelper.shouldAvoidOutdoor(_weatherForecast)
+            Log.d("ItineraryViewModel", "Weather: ${_weatherForecast.description}, avoidOutdoor: $_avoidOutdoor")
+            generateItinerary(_avoidOutdoor)
+        }
     }
     
     fun regenerateItinerary() {
         Log.d("ItineraryViewModel", "Regenerating itinerary...")
-        _weatherForecast = WeatherHelper.getMockForecast()
+        // Keep current weather when regenerating - no need to re-fetch
         _avoidOutdoor = WeatherHelper.shouldAvoidOutdoor(_weatherForecast)
         generateItinerary(_avoidOutdoor)
     }
@@ -943,6 +953,20 @@ fun WeatherBanner(
                     else
                         MaterialTheme.colorScheme.onPrimaryContainer
                 )
+                
+                // Show disclaimer if using fallback weather
+                if (forecast.isFallback) {
+                    Text(
+                        text = "⚠️ Weather data unavailable, showing default",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (avoidOutdoor)
+                            MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                        else
+                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                }
+                
                 if (avoidOutdoor) {
                     Text(
                         text = WeatherHelper.getWeatherAdvice(forecast),

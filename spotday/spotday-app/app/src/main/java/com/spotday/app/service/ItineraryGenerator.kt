@@ -12,6 +12,7 @@ import com.spotday.app.model.ItineraryStop
 import com.spotday.app.model.Neighborhood
 import com.spotday.app.model.Place
 import com.spotday.app.model.PlaceType
+import com.spotday.app.model.qualityScore
 import com.spotday.app.model.QuickStopType
 import com.spotday.app.model.ServiceStyle
 import com.spotday.app.model.StopType
@@ -90,70 +91,51 @@ class ItineraryGenerator(
     }
     
     /**
-     * Select the "home" neighborhood for the itinerary based on:
-     * 1. User's starting location (if provided)
-     * 2. Best match for their preferences (food types, activity types)
-     * 3. Tier priority (Essential neighborhoods preferred for first-time visitors)
+     * Select the "home" neighborhood for the itinerary based on actual venue concentration.
+     * Uses weighted random selection - neighborhoods with more matching venues have higher probability.
+     * 
+     * @param candidateVenues All venues matching the user's selected activity/food types
+     * @param isSpontaneous If true, skip neighborhood selection (city-wide mode)
+     * @return The selected neighborhood, or null for city-wide mode
      */
     private fun selectHomeNeighborhood(
-        startLat: Double,
-        startLng: Double,
-        activityTypes: List<String>,
-        foodTypes: List<String>
+        candidateVenues: List<Place>,
+        isSpontaneous: Boolean
     ): Neighborhood? {
-        // Detect which city we're in
-        val city = neighborhoodsRepository.detectCity(startLat, startLng)
-        val cityId = city?.id ?: "san_francisco" // Default to SF
+        // Spontaneous mode = city-wide, no neighborhood filtering
+        if (isSpontaneous) {
+            Log.d("ItineraryGenerator", "Spontaneous mode: skipping neighborhood selection")
+            return null
+        }
         
-        // Option 1: Find nearest neighborhood to starting location
-        val nearestNeighborhood = neighborhoodsRepository.findNearestNeighborhood(cityId, startLat, startLng)
+        // Count venues per neighborhood (additive across all types)
+        val counts = candidateVenues
+            .mapNotNull { it.neighborhood }
+            .groupingBy { it }
+            .eachCount()
         
-        // Option 2: Find best neighborhood for preferences
-        // This weights neighborhoods that are known for the user's chosen cuisines/activities
-        val preferenceMatches = mutableMapOf<String, Int>()
+        if (counts.isEmpty()) {
+            Log.d("ItineraryGenerator", "No venues with neighborhoods assigned, going city-wide")
+            return null
+        }
         
-        for (foodType in foodTypes) {
-            val goodNeighborhoods = neighborhoodsRepository.getNeighborhoodsForActivity(cityId, foodType)
-            goodNeighborhoods.forEach { neighborhood ->
-                // Tier bonus: Essential neighborhoods get +2, Classic +1
-                val tierBonus = when (neighborhood.tier) {
-                    com.spotday.app.model.NeighborhoodTier.ESSENTIAL -> 2
-                    com.spotday.app.model.NeighborhoodTier.CLASSIC -> 1
-                    else -> 0
-                }
-                preferenceMatches[neighborhood.id] = preferenceMatches.getOrDefault(neighborhood.id, 0) + 1 + tierBonus
+        Log.d("ItineraryGenerator", "Venue counts by neighborhood: $counts")
+        
+        // Weighted random selection - more venues = higher probability
+        val totalWeight = counts.values.sum()
+        var randomValue = (0 until totalWeight).random()
+        
+        for ((neighborhoodId, count) in counts) {
+            randomValue -= count
+            if (randomValue < 0) {
+                val selected = neighborhoodsRepository.getNeighborhood(neighborhoodId)
+                Log.d("ItineraryGenerator", "Selected neighborhood: ${selected?.name} (had $count/${totalWeight} venues)")
+                return selected
             }
         }
         
-        for (activityType in activityTypes) {
-            val goodNeighborhoods = neighborhoodsRepository.getNeighborhoodsForActivity(cityId, activityType)
-            goodNeighborhoods.forEach { neighborhood ->
-                val tierBonus = when (neighborhood.tier) {
-                    com.spotday.app.model.NeighborhoodTier.ESSENTIAL -> 2
-                    com.spotday.app.model.NeighborhoodTier.CLASSIC -> 1
-                    else -> 0
-                }
-                preferenceMatches[neighborhood.id] = preferenceMatches.getOrDefault(neighborhood.id, 0) + 1 + tierBonus
-            }
-        }
-        
-        // If we have preference matches and nearestNeighborhood ranks well, use it
-        // Otherwise, use the highest-scoring neighborhood for preferences
-        if (preferenceMatches.isNotEmpty()) {
-            val bestByPreference = preferenceMatches.maxByOrNull { it.value }?.key
-            val nearestScore = preferenceMatches[nearestNeighborhood?.id] ?: 0
-            val bestScore = preferenceMatches[bestByPreference] ?: 0
-            
-            // If nearest neighborhood is at least 50% as good as best, use it (favor proximity)
-            if (nearestNeighborhood != null && nearestScore >= bestScore * 0.5) {
-                return nearestNeighborhood
-            }
-            
-            return bestByPreference?.let { neighborhoodsRepository.getNeighborhood(it) }
-        }
-        
-        // If no preferences, prefer Essential neighborhoods
-        return nearestNeighborhood ?: neighborhoodsRepository.getEssentialNeighborhoods(cityId).firstOrNull()
+        // Fallback (shouldn't reach here)
+        return counts.keys.firstOrNull()?.let { neighborhoodsRepository.getNeighborhood(it) }
     }
     
     // Calculate distance between two points in kilometers using Haversine formula
@@ -173,6 +155,33 @@ class ItineraryGenerator(
     }
     
     /**
+     * Weighted random selection - higher quality scores get picked more often.
+     * Uses 4th power weighting for aggressive quality preference.
+     * 
+     * Example with 4th power:
+     *   - 0.9^4 = 0.66 (high quality → high weight)
+     *   - 0.5^4 = 0.06 (low quality → low weight)
+     *   - This creates ~11x difference, so top spots dominate but variety still exists
+     */
+    private fun <T> weightedRandomPick(items: List<T>, scoreFunc: (T) -> Float): T? {
+        if (items.isEmpty()) return null
+        if (items.size == 1) return items.first()
+        
+        // 4th power weighting for aggressive quality preference
+        val weights = items.map { scoreFunc(it).pow(4) }
+        val totalWeight = weights.sum()
+        
+        if (totalWeight <= 0f) return items.random() // Fallback if all scores are 0
+        
+        var random = kotlin.random.Random.nextFloat() * totalWeight
+        for ((index, weight) in weights.withIndex()) {
+            random -= weight
+            if (random <= 0) return items[index]
+        }
+        return items.last()
+    }
+    
+    /**
      * Check if a place is open at the given hour.
      * Handles overnight hours (e.g., bar open 4 PM - 2 AM)
      */
@@ -184,6 +193,46 @@ class ItineraryGenerator(
             // Overnight hours (e.g., 4 PM - 2 AM means openHour=16, closeHour=2)
             hour >= place.openHour || hour < place.closeHour
         }
+    }
+    
+    /**
+     * Check if a venue is open for the entire duration starting at the given hour.
+     * For example, if an activity takes 2 hours starting at 8 PM, ensure venue
+     * doesn't close before 10 PM.
+     */
+    private fun isOpenForDuration(venue: Place, startHour: Int, durationMinutes: Int): Boolean {
+        // Check start time
+        if (!isOpenAt(venue, startHour)) return false
+        
+        // Check end time (when the activity would finish)
+        val endHour = startHour + (durationMinutes / 60)
+        val endMinutes = durationMinutes % 60
+        
+        // For normal hours (not overnight), check if we finish before closing
+        return if (venue.closeHour > venue.openHour) {
+            // Normal hours: must finish before close time
+            // Allow finishing exactly at close time (endMinutes == 0 means we finish on the hour)
+            endHour < venue.closeHour || (endHour == venue.closeHour && endMinutes == 0)
+        } else {
+            // Overnight hours (e.g., bar 4 PM - 2 AM)
+            // Either finish before midnight or in the early morning before close
+            true // Simplified: assume overnight venues accommodate the activity
+        }
+    }
+    
+    /**
+     * Find the earliest hour when a venue can accommodate a full activity duration.
+     * Returns null if venue can never fit the activity in the given window.
+     * 
+     * Example: Brewery opens at 12 PM, closes 9 PM, duration 75 min
+     *          User window is 11 AM - 8 PM
+     *          Returns 12 (can start at noon and finish by 1:15 PM, well before 9 PM)
+     */
+    private fun findEarliestOpenHour(venue: Place, fromHour: Int, toHour: Int, durationMinutes: Int = 60): Int? {
+        for (hour in fromHour until toHour) {
+            if (isOpenForDuration(venue, hour, durationMinutes)) return hour
+        }
+        return null
     }
     
     // Find the restaurant closest to the given activities
@@ -468,7 +517,7 @@ class ItineraryGenerator(
             val availableBars = sortedNightlife
                 .filterNot { usedPlaces.contains(it.id) }
                 .filter { currentCost + it.estimatedCost <= budgetBuffer }
-                .filter { isOpenAt(it, currentHour) }
+                .filter { isOpenForDuration(it, currentHour, NIGHTLIFE_DURATION_MINUTES) }
             
             if (availableBars.isEmpty()) {
                 Log.d("ItineraryGenerator", "No more bars available within budget")
@@ -478,8 +527,8 @@ class ItineraryGenerator(
             val sortedByDistance = availableBars.sortedBy { 
                 calculateDistance(currentLat, currentLng, it.lat, it.lng) 
             }
-            val topClosest = sortedByDistance.take(3)
-            val selectedBar = topClosest.random()
+            val topClosest = sortedByDistance.take(5)
+            val selectedBar = weightedRandomPick(topClosest) { it.qualityScore() } ?: continue
             
             val distance = calculateDistance(currentLat, currentLng, selectedBar.lat, selectedBar.lng)
             val stop = createStop(selectedBar, calendar, minutesPerBar, distance)
@@ -599,6 +648,19 @@ class ItineraryGenerator(
         candidateActivities.groupBy { it.type }.forEach { (type, places) ->
             Log.d("ItineraryGenerator", "  - $type: ${places.size} venues (hours: ${places.firstOrNull()?.openHour}-${places.firstOrNull()?.closeHour})")
         }
+        
+        // Pre-filter to venues that can fit their full activity duration within user's time window
+        // This prevents scheduling failures when venues open later (e.g., breweries at noon)
+        val activitiesAvailableToday = candidateActivities.filter { venue ->
+            val duration = getDuration(venue.type)
+            findEarliestOpenHour(venue, startHour, endHour, duration) != null
+        }
+        
+        if (activitiesAvailableToday.size < candidateActivities.size) {
+            val filtered = candidateActivities.size - activitiesAvailableToday.size
+            Log.d("ItineraryGenerator", "Filtered out $filtered venues not open during $startHour:00-$endHour:00 window")
+        }
+        Log.d("ItineraryGenerator", "Venues available during window: ${activitiesAvailableToday.size}/${candidateActivities.size}")
 
         val allCandidateRestaurants = placesRepository.searchRestaurants(foodTypes)
         
@@ -681,66 +743,126 @@ class ItineraryGenerator(
         
         Log.d("ItineraryGenerator", "Starting from location at ($currentLat, $currentLng)")
         
-        // Determine "home" neighborhood for clustering
-        val homeNeighborhood = selectHomeNeighborhood(
-            startLat = initialLat,
-            startLng = initialLng,
-            activityTypes = activityTypes,
-            foodTypes = foodTypes
+        // Combine all candidate venues for neighborhood selection (using pre-filtered activities)
+        val allCandidateVenues = activitiesAvailableToday + candidateRestaurants
+        Log.d("ItineraryGenerator", "Total candidate venues for neighborhood selection: ${allCandidateVenues.size}")
+        
+        // Determine "home" neighborhood based on venue concentration (weighted random)
+        var homeNeighborhood = selectHomeNeighborhood(
+            candidateVenues = allCandidateVenues,
+            isSpontaneous = isSpontaneousMode
         )
         
-        val adjacentNeighborhoods = homeNeighborhood?.let { 
+        var adjacentNeighborhoods = homeNeighborhood?.let { 
             neighborhoodsRepository.getAdjacentNeighborhoods(it.id).map { n -> n.id }.toSet()
         } ?: emptySet()
         
-        Log.d("ItineraryGenerator", "Home neighborhood: ${homeNeighborhood?.name ?: "none"}, adjacent: $adjacentNeighborhoods, mode: $explorationMode")
+        Log.d("ItineraryGenerator", "Home neighborhood: ${homeNeighborhood?.name ?: "city-wide"}, adjacent: $adjacentNeighborhoods, mode: $explorationMode")
         
         // Neighborhood scoring function
         fun neighborhoodScore(place: Place): Int {
-            if (homeNeighborhood == null) return 0
+            val home = homeNeighborhood ?: return 0
             
             return when {
-                place.neighborhood == homeNeighborhood.id -> 50  // Same neighborhood: +50
+                place.neighborhood == home.id -> 50  // Same neighborhood: +50
                 place.neighborhood in adjacentNeighborhoods -> 20 // Adjacent: +20
                 else -> 0 // Other neighborhoods: no bonus
             }
         }
         
-        // In ONE_AREA mode, filter to home + adjacent neighborhoods only
-        // In CITY_WIDE mode, allow all but score higher for nearby
-        fun filterByNeighborhood(places: List<Place>): List<Place> {
-            if (homeNeighborhood == null || explorationMode == ExplorationMode.CITY_WIDE) {
-                return places
+        // Threshold for minimum venues before expanding search
+        val VENUE_THRESHOLD = 2
+        
+        // Filter to home neighborhood only
+        fun filterByHomeNeighborhood(places: List<Place>): List<Place> {
+            val home = homeNeighborhood ?: return places
+            return places.filter { place ->
+                place.neighborhood == null || place.neighborhood == home.id
             }
-            
-            val allowedNeighborhoods = adjacentNeighborhoods + homeNeighborhood.id
-            val filtered = places.filter { place ->
-                place.neighborhood == null || place.neighborhood in allowedNeighborhoods
-            }
-            
-            // If filtering is too restrictive, fall back to all places
-            return if (filtered.size >= 5) filtered else places
         }
         
-        // Apply neighborhood filtering based on exploration mode
-        val filteredActivities = filterByNeighborhood(candidateActivities)
-        val filteredRestaurants = filterByNeighborhood(candidateRestaurants)
+        // Filter to home + adjacent neighborhoods
+        fun filterByHomeAndAdjacent(places: List<Place>): List<Place> {
+            val home = homeNeighborhood ?: return places
+            val allowedNeighborhoods = adjacentNeighborhoods + home.id
+            return places.filter { place ->
+                place.neighborhood == null || place.neighborhood in allowedNeighborhoods
+            }
+        }
         
-        Log.d("ItineraryGenerator", "After neighborhood filter: ${filteredActivities.size}/${candidateActivities.size} activities, ${filteredRestaurants.size}/${candidateRestaurants.size} restaurants")
+        // Apply neighborhood filtering with threshold-based fallback
+        // Spontaneous mode or CITY_WIDE: no filtering
+        // ONE_AREA: try home → home+adjacent → city-wide based on threshold
+        var filteredActivities: List<Place>
+        var filteredRestaurants: List<Place>
         
-        // Shuffle first for variety, then sort by:
-        // 1. Neighborhood score (higher = same/adjacent neighborhood)
-        // 2. Outdoor preference (indoor first if avoidOutdoor is true)
-        // 3. Rating (descending)
-        // 4. Cost (ascending)
-        val sortedActivities = filteredActivities
-            .shuffled()
-            .sortedWith(
-                compareByDescending<Place> { place -> neighborhoodScore(place) }
+        if (isSpontaneousMode || explorationMode == ExplorationMode.CITY_WIDE || homeNeighborhood == null) {
+            // City-wide mode: use all venues (pre-filtered for time window)
+            filteredActivities = activitiesAvailableToday
+            filteredRestaurants = candidateRestaurants
+            Log.d("ItineraryGenerator", "Using city-wide venue pool (mode: ${if (isSpontaneousMode) "spontaneous" else explorationMode})")
+        } else {
+            // ONE_AREA mode: cascade filtering with threshold
+            val homeOnlyActivities = filterByHomeNeighborhood(activitiesAvailableToday)
+            val homeOnlyRestaurants = filterByHomeNeighborhood(candidateRestaurants)
+            val homeOnlyTotal = homeOnlyActivities.size + homeOnlyRestaurants.size
+            
+            if (homeOnlyTotal >= VENUE_THRESHOLD) {
+                // Threshold met with home neighborhood only
+                filteredActivities = homeOnlyActivities
+                filteredRestaurants = homeOnlyRestaurants
+                Log.d("ItineraryGenerator", "Using home neighborhood only: $homeOnlyTotal venues (threshold: $VENUE_THRESHOLD)")
+            } else {
+                // Expand to adjacent neighborhoods
+                val adjacentActivities = filterByHomeAndAdjacent(activitiesAvailableToday)
+                val adjacentRestaurants = filterByHomeAndAdjacent(candidateRestaurants)
+                val adjacentTotal = adjacentActivities.size + adjacentRestaurants.size
+                
+                if (adjacentTotal >= VENUE_THRESHOLD) {
+                    filteredActivities = adjacentActivities
+                    filteredRestaurants = adjacentRestaurants
+                    Log.d("ItineraryGenerator", "Expanded to adjacent neighborhoods: $adjacentTotal venues (threshold: $VENUE_THRESHOLD)")
+                } else {
+                    // Fall back to city-wide
+                    filteredActivities = activitiesAvailableToday
+                    filteredRestaurants = candidateRestaurants
+                    homeNeighborhood = null  // Clear for UI to show city-wide
+                    adjacentNeighborhoods = emptySet()
+                    Log.d("ItineraryGenerator", "Threshold not met, using city-wide: ${activitiesAvailableToday.size + candidateRestaurants.size} venues")
+                }
+            }
+        }
+        
+        Log.d("ItineraryGenerator", "After neighborhood filter: ${filteredActivities.size}/${activitiesAvailableToday.size} activities, ${filteredRestaurants.size}/${candidateRestaurants.size} restaurants")
+        
+        // Helper function to calculate distance from user's start location
+        fun distanceFromStart(place: Place): Double {
+            return calculateDistance(initialLat, initialLng, place.lat, place.lng)
+        }
+        
+        // Sort venues based on mode:
+        // - Spontaneous: proximity first (closest venues first)
+        // - Normal: neighborhood score first, then quality
+        val sortedActivities = if (isSpontaneousMode) {
+            // Spontaneous mode: sort by proximity, then rating
+            filteredActivities.sortedWith(
+                compareBy<Place> { place -> distanceFromStart(place) }
                     .thenBy { place -> if (avoidOutdoor && place.isOutdoor) 1 else 0 }
                     .thenByDescending { place -> place.rating }
-                    .thenBy { place -> place.estimatedCost }
-            )
+            ).also {
+                Log.d("ItineraryGenerator", "Spontaneous mode: sorted ${it.size} activities by proximity")
+            }
+        } else {
+            // Normal mode: neighborhood score, then shuffle for variety
+            filteredActivities
+                .shuffled()
+                .sortedWith(
+                    compareByDescending<Place> { place -> neighborhoodScore(place) }
+                        .thenBy { place -> if (avoidOutdoor && place.isOutdoor) 1 else 0 }
+                        .thenByDescending { place -> place.rating }
+                        .thenBy { place -> place.estimatedCost }
+                )
+        }
         
         if (avoidOutdoor) {
             val outdoorCount = filteredActivities.count { place -> place.isOutdoor }
@@ -748,14 +870,25 @@ class ItineraryGenerator(
             Log.d("ItineraryGenerator", "Weather mode: Prioritizing indoor ($indoorCount indoor, $outdoorCount outdoor)")
         }
         
-        // Sort restaurants by neighborhood score first, then quality
-        val sortedRestaurants = filteredRestaurants
-            .shuffled()
-            .sortedWith(
-                compareByDescending<Place> { place -> neighborhoodScore(place) }
+        // Sort restaurants based on mode
+        val sortedRestaurants = if (isSpontaneousMode) {
+            // Spontaneous mode: sort by proximity, then rating
+            filteredRestaurants.sortedWith(
+                compareBy<Place> { place -> distanceFromStart(place) }
                     .thenByDescending { place -> place.rating }
-                    .thenBy { place -> place.estimatedCost }
-            )
+            ).also {
+                Log.d("ItineraryGenerator", "Spontaneous mode: sorted ${it.size} restaurants by proximity")
+            }
+        } else {
+            // Normal mode: neighborhood score, then shuffle for variety
+            filteredRestaurants
+                .shuffled()
+                .sortedWith(
+                    compareByDescending<Place> { place -> neighborhoodScore(place) }
+                        .thenByDescending { place -> place.rating }
+                        .thenBy { place -> place.estimatedCost }
+                )
+        }
         
         val calendar = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, startHour)
@@ -825,7 +958,7 @@ class ItineraryGenerator(
                     val availableRestaurants = sortedRestaurants
                         .filterNot { usedPlaces.contains(it.id) }
                         .filter { currentCost + it.estimatedCost <= budgetBuffer }
-                        .filter { isOpenAt(it, currentHour) }
+                        .filter { isOpenForDuration(it, currentHour, getDuration(it)) }
                         .filter { restaurant ->
                             // Only allow formal dining for dinner slots
                             if (restaurant.serviceStyle == ServiceStyle.FORMAL) {
@@ -836,12 +969,12 @@ class ItineraryGenerator(
                         }
                     
                     if (availableRestaurants.isNotEmpty()) {
-                        // Pick from top 3 closest restaurants for variety (not always the absolute closest)
+                        // Pick from top 5 closest restaurants using weighted random by quality
                         val sortedByDistance = availableRestaurants.sortedBy { 
                             calculateDistance(currentLat, currentLng, it.lat, it.lng) 
                         }
-                        val topClosest = sortedByDistance.take(3)
-                        val selectedRestaurant = topClosest.random()
+                        val topClosest = sortedByDistance.take(5)
+                        val selectedRestaurant = weightedRandomPick(topClosest) { it.qualityScore() }
                         
                         if (selectedRestaurant != null) {
                             val distance = calculateDistance(currentLat, currentLng, selectedRestaurant.lat, selectedRestaurant.lng)
@@ -869,18 +1002,103 @@ class ItineraryGenerator(
                     val currentHour = slot.idealHour
                     // Find unselected activities within budget using nearest-neighbor
                     // Also filter by operating hours
-                    val availableActivities = sortedActivities
+                    val availableNow = sortedActivities
                         .filterNot { usedPlaces.contains(it.id) }
                         .filter { currentCost + it.estimatedCost <= budgetBuffer }
-                        .filter { isOpenAt(it, currentHour) }
+                        .filter { isOpenForDuration(it, currentHour, getDuration(it.type)) }
+                    
+                    // Look-ahead scheduling: if nothing open now, find what opens soonest
+                    val (availableActivities, waitMinutes) = if (availableNow.isNotEmpty()) {
+                        availableNow to 0
+                    } else {
+                        // Find venues that open later in the day (considering full activity duration)
+                        val opensLater = sortedActivities
+                            .filterNot { usedPlaces.contains(it.id) }
+                            .filter { currentCost + it.estimatedCost <= budgetBuffer }
+                            .mapNotNull { venue ->
+                                val duration = getDuration(venue.type)
+                                findEarliestOpenHour(venue, currentHour, endHour, duration)?.let { opensAt ->
+                                    venue to ((opensAt - currentHour) * 60)
+                                }
+                            }
+                            .sortedBy { it.second }
+                        
+                        if (opensLater.isNotEmpty()) {
+                            val (_, minWait) = opensLater.first()
+                            // Only wait if reasonable (<= 90 min)
+                            if (minWait <= 90) {
+                                val venuesOpeningSoon = opensLater
+                                    .filter { it.second == minWait }
+                                    .map { it.first }
+                                Log.d("ItineraryGenerator", "Nothing open now, waiting $minWait min for ${venuesOpeningSoon.size} venues to open")
+                                venuesOpeningSoon to minWait
+                            } else {
+                                Log.d("ItineraryGenerator", "Next venue opens in $minWait min (too long to wait)")
+                                emptyList<Place>() to 0
+                            }
+                        } else {
+                            emptyList<Place>() to 0
+                        }
+                    }
                     
                     if (availableActivities.isNotEmpty()) {
-                        // Pick from top 3 closest activities for variety (not always the absolute closest)
+                        // If we need to wait, try to fill the gap productively
+                        if (waitMinutes > 0) {
+                            val gapCurrentHour = calendar.get(Calendar.HOUR_OF_DAY)
+                            var gapFilled = false
+                            
+                            // Try to fill with a meal if it's mealtime and gap is long enough
+                            if (waitMinutes >= 45 && !gapFilled) {
+                                val isMealTime = (gapCurrentHour in 7..9) || // Breakfast
+                                                (gapCurrentHour in 11..13) || // Lunch
+                                                (gapCurrentHour in 17..19)    // Dinner
+                                
+                                if (isMealTime) {
+                                    // Find a quick restaurant
+                                    val quickMealOptions = sortedRestaurants
+                                        .filterNot { usedPlaces.contains(it.id) }
+                                        .filter { currentCost + it.estimatedCost <= budgetBuffer }
+                                        .filter { it.serviceStyle == ServiceStyle.QUICK || it.serviceStyle == ServiceStyle.CASUAL }
+                                        .filter { isOpenAt(it, gapCurrentHour) }
+                                        .take(3)
+                                    
+                                    if (quickMealOptions.isNotEmpty()) {
+                                        val meal = quickMealOptions.random()
+                                        val mealDuration = if (meal.serviceStyle == ServiceStyle.QUICK) 30 else 45
+                                        val distance = calculateDistance(currentLat, currentLng, meal.lat, meal.lng)
+                                        
+                                        val mealStop = createStop(meal, calendar, mealDuration, distance)
+                                        itinerary.add(mealStop)
+                                        currentCost += meal.estimatedCost
+                                        usedPlaces.add(meal.id)
+                                        currentLat = meal.lat
+                                        currentLng = meal.lng
+                                        totalDistance += distance
+                                        
+                                        calendar.add(Calendar.MINUTE, mealDuration + TRAVEL_TIME_MINUTES)
+                                        gapFilled = true
+                                        Log.d("ItineraryGenerator", "Filled wait gap with meal: ${meal.name}")
+                                    }
+                                }
+                            }
+                            
+                            // If gap not filled and still have time to wait, just advance
+                            if (!gapFilled) {
+                                // Calculate remaining wait after any partial fill
+                                val remainingWait = waitMinutes - (if (gapFilled) 0 else 0)
+                                if (remainingWait > 0) {
+                                    calendar.add(Calendar.MINUTE, remainingWait)
+                                    Log.d("ItineraryGenerator", "Advanced time by $remainingWait min to when venues open")
+                                }
+                            }
+                        }
+                        
+                        // Pick from top 5 closest activities using weighted random by quality
                         val sortedByDistance = availableActivities.sortedBy { 
                             calculateDistance(currentLat, currentLng, it.lat, it.lng) 
                         }
-                        val topClosest = sortedByDistance.take(3)
-                        val selectedActivity = topClosest.random()
+                        val topClosest = sortedByDistance.take(5)
+                        val selectedActivity = weightedRandomPick(topClosest) { it.qualityScore() }
                         
                         if (selectedActivity != null) {
                             val duration = getDuration(selectedActivity.type)
@@ -902,7 +1120,7 @@ class ItineraryGenerator(
                             calendar.add(Calendar.MINUTE, TRAVEL_TIME_MINUTES)
                         }
                     } else {
-                        Log.d("ItineraryGenerator", "No available activities within budget")
+                        Log.d("ItineraryGenerator", "No available activities within budget or time window")
                     }
                 }
             }
@@ -969,17 +1187,19 @@ class ItineraryGenerator(
                             val sortedByDistance = availableBars.sortedBy { 
                                 calculateDistance(lastLat, lastLng, it.lat, it.lng) 
                             }
-                            val topClosest = sortedByDistance.take(3)
-                            val nightlifeVenue = topClosest.random()
+                            val topClosest = sortedByDistance.take(5)
+                            val nightlifeVenue = weightedRandomPick(topClosest) { it.qualityScore() }
                             
-                            val distance = calculateDistance(lastLat, lastLng, nightlifeVenue.lat, nightlifeVenue.lng)
-                            val stop = createStop(nightlifeVenue, nightlifeCalendar, NIGHTLIFE_DURATION_MINUTES, distance)
-                            
-                            itinerary.add(stop)
-                            currentCost += nightlifeVenue.estimatedCost
-                            totalDistance += distance
-                            
-                            Log.d("ItineraryGenerator", "Added nightlife: ${nightlifeVenue.name} (cost: $${nightlifeVenue.estimatedCost}, distance: ${"%.2f".format(distance)} km)")
+                            if (nightlifeVenue != null) {
+                                val distance = calculateDistance(lastLat, lastLng, nightlifeVenue.lat, nightlifeVenue.lng)
+                                val stop = createStop(nightlifeVenue, nightlifeCalendar, NIGHTLIFE_DURATION_MINUTES, distance)
+                                
+                                itinerary.add(stop)
+                                currentCost += nightlifeVenue.estimatedCost
+                                totalDistance += distance
+                                
+                                Log.d("ItineraryGenerator", "Added nightlife: ${nightlifeVenue.name} (cost: $${nightlifeVenue.estimatedCost}, distance: ${"%.2f".format(distance)} km)")
+                            }
                         } else {
                             Log.d("ItineraryGenerator", "No nightlife venues available within budget")
                         }

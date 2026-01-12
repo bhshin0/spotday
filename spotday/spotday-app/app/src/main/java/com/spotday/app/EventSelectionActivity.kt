@@ -173,11 +173,28 @@ fun EventSelectionScreen(
                 modifier = Modifier.weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "No events found for your time window",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(32.dp)
+                ) {
+                    Text(
+                        text = "😔",
+                        style = MaterialTheme.typography.displayLarge,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    Text(
+                        text = "No Events Available",
+                        style = MaterialTheme.typography.headlineSmall,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Text(
+                        text = "We couldn't load live events right now. Don't worry - we'll still build you an amazing itinerary with places to explore!",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
             }
         } else {
             LazyColumn(

@@ -1,5 +1,7 @@
 package com.spotday.app.model
 
+import kotlin.math.ln
+
 enum class PlaceType {
     MUSEUM,
     PARK,
@@ -27,6 +29,11 @@ enum class EventType {
     FOOD_FESTIVAL,
     STREET_FAIR,
     CLASS_WORKSHOP
+}
+
+enum class EventSource {
+    TICKETMASTER,  // Concerts, sports, theater, comedy
+    EVENTBRITE     // Food festivals, street fairs, workshops, classes
 }
 
 enum class ServiceStyle {
@@ -121,7 +128,9 @@ data class Event(
     val priceMin: Double?,
     val priceMax: Double?,
     val isSoldOut: Boolean = false,
-    val ticketUrl: String? = null
+    val ticketUrl: String? = null,
+    val popularity: Int = 3,  // 1-5 scale, 5 = most popular (maps to Ticketmaster sort)
+    val source: EventSource = EventSource.TICKETMASTER
 )
 
 data class Place(
@@ -138,8 +147,24 @@ data class Place(
     val closeHour: Int = 22,       // Closes at 10 PM by default
     val isOutdoor: Boolean = false, // For weather-aware recommendations
     val serviceStyle: ServiceStyle = ServiceStyle.CASUAL, // Restaurant service style
-    val neighborhood: String? = null // Neighborhood ID for clustering
+    val neighborhood: String? = null, // Neighborhood ID for clustering
+    val reviewCount: Int = 0       // 0 = unknown, populated by Google Places API in Phase 2
 )
+
+/**
+ * Quality score combining rating (60%) and popularity (40%).
+ * Falls back to rating-only if reviewCount is unknown (0).
+ * Returns 0.0 - 1.0 range.
+ */
+fun Place.qualityScore(): Float {
+    val normalizedRating = rating / 5f
+    
+    // If no review data yet, rely on rating only (POC / pre-API)
+    if (reviewCount == 0) return normalizedRating
+    
+    val normalizedPopularity = (ln(reviewCount.toFloat() + 1) / ln(5000f)).coerceIn(0f, 1f)
+    return normalizedRating * 0.6f + normalizedPopularity * 0.4f
+}
 
 data class TransitEstimate(
     val walkingMinutes: Int,

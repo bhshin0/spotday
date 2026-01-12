@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.spotday.app.ui.theme.SpotDayTheme
+import com.spotday.app.util.PreferencesManager
 
 class RestaurantSelectionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,25 +70,68 @@ fun RestaurantSelectionScreen(
     explorationMode: String = "ONE_AREA"
 ) {
     val context = LocalContext.current
-    var italianChecked by remember { mutableStateOf(false) }
-    var mexicanChecked by remember { mutableStateOf(false) }
-    var americanChecked by remember { mutableStateOf(false) }
-    var asianChecked by remember { mutableStateOf(false) }
-    var seafoodChecked by remember { mutableStateOf(false) }
-    var vegetarianChecked by remember { mutableStateOf(false) }
+    val preferencesManager = remember { PreferencesManager(context) }
     
-    // Dining style state
-    var quickServiceChecked by remember { mutableStateOf(false) }
-    var casualChecked by remember { mutableStateOf(false) }
-    var formalChecked by remember { mutableStateOf(false) }
+    // Load saved cuisine selections
+    val savedCuisines = remember { preferencesManager.getCuisineSelections() }
+    var italianChecked by remember { mutableStateOf(savedCuisines.contains("italian")) }
+    var mexicanChecked by remember { mutableStateOf(savedCuisines.contains("mexican")) }
+    var americanChecked by remember { mutableStateOf(savedCuisines.contains("american")) }
+    var asianChecked by remember { mutableStateOf(savedCuisines.contains("asian")) }
+    var seafoodChecked by remember { mutableStateOf(savedCuisines.contains("seafood")) }
+    var vegetarianChecked by remember { mutableStateOf(savedCuisines.contains("vegetarian")) }
     
-    // Nightlife state
-    var barsChecked by remember { mutableStateOf(false) }
-    var cocktailBarsChecked by remember { mutableStateOf(false) }
-    var clubsChecked by remember { mutableStateOf(false) }
-    var liveMusicChecked by remember { mutableStateOf(false) }
-    var diveBarsChecked by remember { mutableStateOf(false) }
-    var rooftopBarsChecked by remember { mutableStateOf(false) }
+    // Load saved service style selections
+    val savedServiceStyles = remember { preferencesManager.getServiceStyleSelections() }
+    var quickServiceChecked by remember { mutableStateOf(savedServiceStyles.contains("quick")) }
+    var casualChecked by remember { mutableStateOf(savedServiceStyles.contains("casual")) }
+    var formalChecked by remember { mutableStateOf(savedServiceStyles.contains("formal")) }
+    
+    // Load saved nightlife selections
+    val savedNightlife = remember { preferencesManager.getNightlifeSelections() }
+    var barsChecked by remember { mutableStateOf(savedNightlife.contains("bars")) }
+    var cocktailBarsChecked by remember { mutableStateOf(savedNightlife.contains("cocktail_bars")) }
+    var clubsChecked by remember { mutableStateOf(savedNightlife.contains("clubs")) }
+    var liveMusicChecked by remember { mutableStateOf(savedNightlife.contains("live_music")) }
+    var diveBarsChecked by remember { mutableStateOf(savedNightlife.contains("dive_bars")) }
+    var rooftopBarsChecked by remember { mutableStateOf(savedNightlife.contains("rooftop_bars")) }
+    
+    // Save preferences whenever they change
+    LaunchedEffect(
+        italianChecked, mexicanChecked, americanChecked, 
+        asianChecked, seafoodChecked, vegetarianChecked
+    ) {
+        val cuisines = mutableSetOf<String>()
+        if (italianChecked) cuisines.add("italian")
+        if (mexicanChecked) cuisines.add("mexican")
+        if (americanChecked) cuisines.add("american")
+        if (asianChecked) cuisines.add("asian")
+        if (seafoodChecked) cuisines.add("seafood")
+        if (vegetarianChecked) cuisines.add("vegetarian")
+        preferencesManager.saveCuisineSelections(cuisines)
+    }
+    
+    LaunchedEffect(quickServiceChecked, casualChecked, formalChecked) {
+        val styles = mutableSetOf<String>()
+        if (quickServiceChecked) styles.add("quick")
+        if (casualChecked) styles.add("casual")
+        if (formalChecked) styles.add("formal")
+        preferencesManager.saveServiceStyleSelections(styles)
+    }
+    
+    LaunchedEffect(
+        barsChecked, cocktailBarsChecked, clubsChecked,
+        liveMusicChecked, diveBarsChecked, rooftopBarsChecked
+    ) {
+        val nightlife = mutableSetOf<String>()
+        if (barsChecked) nightlife.add("bars")
+        if (cocktailBarsChecked) nightlife.add("cocktail_bars")
+        if (clubsChecked) nightlife.add("clubs")
+        if (liveMusicChecked) nightlife.add("live_music")
+        if (diveBarsChecked) nightlife.add("dive_bars")
+        if (rooftopBarsChecked) nightlife.add("rooftop_bars")
+        preferencesManager.saveNightlifeSelections(nightlife)
+    }
 
     Column(
         modifier = Modifier

@@ -19,6 +19,14 @@ class PreferencesManager(context: Context) {
         private const val KEY_SERVICE_STYLES = "selected_service_styles"
         private const val KEY_EXPLORATION_MODE = "exploration_mode"
         private const val KEY_DEFAULT_BUDGET = "default_budget"
+        
+        // WelcomeActivity preferences
+        private const val KEY_IS_SPONTANEOUS_MODE = "is_spontaneous_mode"
+        private const val KEY_TIME_RANGE_START = "time_range_start"
+        private const val KEY_TIME_RANGE_END = "time_range_end"
+        private const val KEY_DURATION_HOURS = "duration_hours"
+        private const val KEY_BUDGET = "budget"
+        private const val KEY_IS_HUNGRY_NOW = "is_hungry_now"
     }
     
     // Activity selections
@@ -73,6 +81,54 @@ class PreferencesManager(context: Context) {
     
     fun getDefaultBudget(): Int {
         return prefs.getInt(KEY_DEFAULT_BUDGET, 100)
+    }
+    
+    // Welcome screen preferences
+    fun saveSpontaneousMode(isSpontaneous: Boolean) {
+        prefs.edit().putBoolean(KEY_IS_SPONTANEOUS_MODE, isSpontaneous).apply()
+    }
+    
+    fun getSpontaneousMode(): Boolean {
+        return prefs.getBoolean(KEY_IS_SPONTANEOUS_MODE, false)
+    }
+    
+    fun saveTimeRange(start: Float, end: Float) {
+        prefs.edit()
+            .putFloat(KEY_TIME_RANGE_START, start)
+            .putFloat(KEY_TIME_RANGE_END, end)
+            .apply()
+    }
+    
+    fun getTimeRangeStart(): Float {
+        return prefs.getFloat(KEY_TIME_RANGE_START, 9f)
+    }
+    
+    fun getTimeRangeEnd(): Float {
+        return prefs.getFloat(KEY_TIME_RANGE_END, 17f)
+    }
+    
+    fun saveDurationHours(hours: Float) {
+        prefs.edit().putFloat(KEY_DURATION_HOURS, hours).apply()
+    }
+    
+    fun getDurationHours(): Float {
+        return prefs.getFloat(KEY_DURATION_HOURS, 4f)
+    }
+    
+    fun saveBudget(budget: Int) {
+        prefs.edit().putInt(KEY_BUDGET, budget).apply()
+    }
+    
+    fun getBudget(): Int {
+        return prefs.getInt(KEY_BUDGET, 100)
+    }
+    
+    fun saveHungryNow(isHungry: Boolean) {
+        prefs.edit().putBoolean(KEY_IS_HUNGRY_NOW, isHungry).apply()
+    }
+    
+    fun getHungryNow(): Boolean {
+        return prefs.getBoolean(KEY_IS_HUNGRY_NOW, false)
     }
     
     // Clear all preferences
