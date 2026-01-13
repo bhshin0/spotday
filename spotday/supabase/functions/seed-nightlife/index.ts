@@ -19,6 +19,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const FIND_PLACE_API_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json";
+const PLACE_DETAILS_API_URL = "https://maps.googleapis.com/maps/api/place/details/json";
 
 // Maximum distance from city center (in km) for valid venues
 const MAX_DISTANCE_FROM_CITY_KM = 50;
@@ -56,6 +57,42 @@ interface GoogleFindPlaceResponse {
   candidates: GooglePlaceCandidate[];
   status: string;
 }
+
+interface OpeningHoursPeriod {
+  open: { day: number; time: string };  // day: 0=Sunday, 6=Saturday; time: "1700"
+  close?: { day: number; time: string };
+}
+
+interface PlaceDetailsResult {
+  place_id: string;
+  opening_hours?: {
+    periods?: OpeningHoursPeriod[];
+    weekday_text?: string[];
+  };
+}
+
+interface GooglePlaceDetailsResponse {
+  result: PlaceDetailsResult;
+  status: string;
+}
+
+// Weekly hours format for database storage
+interface DayHours {
+  open: string;  // "11:00"
+  close: string; // "22:00" or "02:00" for overnight
+}
+
+type WeeklyHours = {
+  monday: DayHours | null;
+  tuesday: DayHours | null;
+  wednesday: DayHours | null;
+  thursday: DayHours | null;
+  friday: DayHours | null;
+  saturday: DayHours | null;
+  sunday: DayHours | null;
+};
+
+const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 
 interface CityData {
   id: string;
@@ -246,6 +283,103 @@ async function findPlace(
   return data.candidates[0];
 }
 
+// Format time from "1700" to "17:00"
+function formatTime(time: string): string {
+  if (time.length === 4) {
+    return `${time.substring(0, 2)}:${time.substring(2)}`;
+  }
+  return time;
+}
+
+// Call Google Place Details API to get actual opening hours
+async function getPlaceDetails(placeId: string): Promise<WeeklyHours | null> {
+  const params = new URLSearchParams({
+    place_id: placeId,
+    fields: "opening_hours",
+    key: GOOGLE_PLACES_API_KEY,
+  });
+
+  try {
+    const response = await fetch(`${PLACE_DETAILS_API_URL}?${params}`);
+
+    if (!response.ok) {
+      console.error(`Place Details API error for ${placeId}: ${response.status}`);
+      return null;
+    }
+
+    const data: GooglePlaceDetailsResponse = await response.json();
+
+    if (data.status !== "OK" || !data.result?.opening_hours?.periods) {
+      return null;
+    }
+
+    // Initialize weekly hours with null (closed) for all days
+    const weeklyHours: WeeklyHours = {
+      monday: null,
+      tuesday: null,
+      wednesday: null,
+      thursday: null,
+      friday: null,
+      saturday: null,
+      sunday: null,
+    };
+
+    const periods = data.result.opening_hours.periods;
+    
+    // Check if place is open 24 hours (single period with no close)
+    if (periods.length === 1 && !periods[0].close && periods[0].open.day === 0 && periods[0].open.time === "0000") {
+      // Open 24/7
+      const allDay: DayHours = { open: "00:00", close: "23:59" };
+      weeklyHours.sunday = allDay;
+      weeklyHours.monday = allDay;
+      weeklyHours.tuesday = allDay;
+      weeklyHours.wednesday = allDay;
+      weeklyHours.thursday = allDay;
+      weeklyHours.friday = allDay;
+      weeklyHours.saturday = allDay;
+      return weeklyHours;
+    }
+
+    // Parse each period
+    for (const period of periods) {
+      const openDay = period.open.day; // 0 = Sunday, 6 = Saturday
+      const dayName = DAY_NAMES[openDay];
+      
+      const openTime = formatTime(period.open.time);
+      
+      // Handle close time
+      let closeTime = "23:59"; // Default if no close specified
+      if (period.close) {
+        closeTime = formatTime(period.close.time);
+      }
+
+      weeklyHours[dayName as keyof WeeklyHours] = {
+        open: openTime,
+        close: closeTime,
+      };
+    }
+
+    return weeklyHours;
+  } catch (error) {
+    console.error(`Error fetching place details for ${placeId}:`, error);
+    return null;
+  }
+}
+
+// Create default nightlife hours (4 PM - 2 AM every day)
+function getDefaultNightlifeHours(): WeeklyHours {
+  const defaultHours: DayHours = { open: "16:00", close: "02:00" };
+  return {
+    monday: defaultHours,
+    tuesday: defaultHours,
+    wednesday: defaultHours,
+    thursday: defaultHours,
+    friday: defaultHours,
+    saturday: defaultHours,
+    sunday: defaultHours,
+  };
+}
+
 // Validate LLM response
 function validateResponse(data: LLMResponse): string[] {
   const errors: string[] = [];
@@ -359,6 +493,7 @@ serve(async (req) => {
         review_count: number;
         price_level: number | null;
         is_outdoor: boolean;
+        weekly_hours: WeeklyHours;
         last_verified_at: string;
         is_permanently_closed: boolean;
       }> = [];
@@ -428,6 +563,14 @@ serve(async (req) => {
           continue;
         }
 
+        // Get actual opening hours from Place Details API
+        // Rate limiting - additional 50ms for details request
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const weeklyHours = await getPlaceDetails(googleResult.place_id);
+        
+        // Use real hours or default nightlife hours (4 PM - 2 AM)
+        const finalHours = weeklyHours ?? getDefaultNightlifeHours();
+
         // Find nearest neighborhood
         const neighborhoodId = findNearestNeighborhood(
           googleResult.geometry.location.lat,
@@ -435,7 +578,7 @@ serve(async (req) => {
           neighborhoods || []
         );
 
-        // Prepare place for upsert
+        // Prepare place for upsert with weekly hours
         placesToUpsert.push({
           id: googleResult.place_id,
           city_id: city.id,
@@ -449,13 +592,15 @@ serve(async (req) => {
           review_count: googleResult.user_ratings_total || 0,
           price_level: googleResult.price_level || null,
           is_outdoor: false,
+          weekly_hours: finalHours,
           last_verified_at: new Date().toISOString(),
           is_permanently_closed: false,
         });
 
         matched++;
+        const hasRealHours = weeklyHours !== null;
         console.log(
-          `MATCHED: ${venue.name} → ${googleResult.name} (${venue.category}, rating: ${googleResult.rating || "N/A"})`
+          `MATCHED: ${venue.name} → ${googleResult.name} (${venue.category}, hours: ${hasRealHours ? "from Google" : "default"}, rating: ${googleResult.rating || "N/A"})`
         );
       }
 

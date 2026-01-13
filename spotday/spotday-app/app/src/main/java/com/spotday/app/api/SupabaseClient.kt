@@ -187,6 +187,23 @@ data class SupabaseCachedWeather(
 }
 
 @Serializable
+data class SupabaseDayHours(
+    val open: String,
+    val close: String
+)
+
+@Serializable
+data class SupabaseWeeklyHours(
+    val monday: SupabaseDayHours? = null,
+    val tuesday: SupabaseDayHours? = null,
+    val wednesday: SupabaseDayHours? = null,
+    val thursday: SupabaseDayHours? = null,
+    val friday: SupabaseDayHours? = null,
+    val saturday: SupabaseDayHours? = null,
+    val sunday: SupabaseDayHours? = null
+)
+
+@Serializable
 data class SupabaseCachedPlace(
     val id: String,
     val city_id: String,
@@ -199,12 +216,12 @@ data class SupabaseCachedPlace(
     val review_count: Int = 0,
     val price_level: Int? = null,     // 1-4
     val is_outdoor: Boolean = false,
-    val open_hour: Int = 6,
-    val close_hour: Int = 22,
     // Nightlife-specific fields
     val nightlife_category: String? = null,  // cocktail_bar, dive_bar, rooftop_bar, etc.
     val last_verified_at: String? = null,    // ISO timestamp for staleness filtering
-    val is_permanently_closed: Boolean = false
+    val is_permanently_closed: Boolean = false,
+    // Weekly hours from Google Places API (required after migration 012)
+    val weekly_hours: SupabaseWeeklyHours? = null
 ) {
     // Convenience accessors for camelCase
     val cityId: String get() = city_id
@@ -213,11 +230,10 @@ data class SupabaseCachedPlace(
     val reviewCount: Int get() = review_count
     val priceLevel: Int? get() = price_level
     val isOutdoor: Boolean get() = is_outdoor
-    val openHour: Int get() = open_hour
-    val closeHour: Int get() = close_hour
     val nightlifeCategory: String? get() = nightlife_category
     val lastVerifiedAt: String? get() = last_verified_at
     val isPermanentlyClosed: Boolean get() = is_permanently_closed
+    val weeklyHours: SupabaseWeeklyHours? get() = weekly_hours
 }
 
 @Serializable

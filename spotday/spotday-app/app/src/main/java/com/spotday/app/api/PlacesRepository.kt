@@ -9,9 +9,11 @@ import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.android.libraries.places.api.net.PlacesClient
 import com.spotday.app.BuildConfig
+import com.spotday.app.model.DayHours
 import com.spotday.app.model.Place as AppPlace
 import com.spotday.app.model.PlaceType
 import com.spotday.app.model.ServiceStyle
+import com.spotday.app.model.WeeklyHours
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -128,6 +130,86 @@ class PlacesRepository(private val context: Context) {
     /**
      * Convert Supabase cached place to app Place model.
      */
+    /**
+     * Convert Supabase weekly hours to app model.
+     * Returns default hours based on place type if not available.
+     */
+    private fun convertWeeklyHours(remote: SupabaseWeeklyHours?, placeType: PlaceType): WeeklyHours {
+        fun convertDay(day: SupabaseDayHours?): DayHours? {
+            return day?.let { DayHours(it.open, it.close) }
+        }
+        
+        if (remote != null) {
+            return WeeklyHours(
+                monday = convertDay(remote.monday),
+                tuesday = convertDay(remote.tuesday),
+                wednesday = convertDay(remote.wednesday),
+                thursday = convertDay(remote.thursday),
+                friday = convertDay(remote.friday),
+                saturday = convertDay(remote.saturday),
+                sunday = convertDay(remote.sunday)
+            )
+        }
+        
+        // Return sensible defaults based on place type
+        return when (placeType) {
+            PlaceType.NIGHTLIFE -> WeeklyHours(
+                monday = DayHours("16:00", "02:00"),
+                tuesday = DayHours("16:00", "02:00"),
+                wednesday = DayHours("16:00", "02:00"),
+                thursday = DayHours("16:00", "02:00"),
+                friday = DayHours("16:00", "02:00"),
+                saturday = DayHours("16:00", "02:00"),
+                sunday = DayHours("16:00", "00:00")
+            )
+            PlaceType.RESTAURANT -> WeeklyHours(
+                monday = DayHours("11:00", "22:00"),
+                tuesday = DayHours("11:00", "22:00"),
+                wednesday = DayHours("11:00", "22:00"),
+                thursday = DayHours("11:00", "22:00"),
+                friday = DayHours("11:00", "23:00"),
+                saturday = DayHours("10:00", "23:00"),
+                sunday = DayHours("10:00", "21:00")
+            )
+            PlaceType.MUSEUM -> WeeklyHours(
+                monday = null,  // Museums often closed Monday
+                tuesday = DayHours("10:00", "17:00"),
+                wednesday = DayHours("10:00", "17:00"),
+                thursday = DayHours("10:00", "21:00"),
+                friday = DayHours("10:00", "17:00"),
+                saturday = DayHours("10:00", "17:00"),
+                sunday = DayHours("11:00", "17:00")
+            )
+            PlaceType.PARK, PlaceType.OUTDOOR -> WeeklyHours(
+                monday = DayHours("06:00", "22:00"),
+                tuesday = DayHours("06:00", "22:00"),
+                wednesday = DayHours("06:00", "22:00"),
+                thursday = DayHours("06:00", "22:00"),
+                friday = DayHours("06:00", "22:00"),
+                saturday = DayHours("06:00", "22:00"),
+                sunday = DayHours("06:00", "22:00")
+            )
+            PlaceType.WELLNESS -> WeeklyHours(
+                monday = DayHours("09:00", "21:00"),
+                tuesday = DayHours("09:00", "21:00"),
+                wednesday = DayHours("09:00", "21:00"),
+                thursday = DayHours("09:00", "21:00"),
+                friday = DayHours("09:00", "21:00"),
+                saturday = DayHours("09:00", "18:00"),
+                sunday = null
+            )
+            else -> WeeklyHours(
+                monday = DayHours("09:00", "18:00"),
+                tuesday = DayHours("09:00", "18:00"),
+                wednesday = DayHours("09:00", "18:00"),
+                thursday = DayHours("09:00", "18:00"),
+                friday = DayHours("09:00", "18:00"),
+                saturday = DayHours("09:00", "18:00"),
+                sunday = DayHours("09:00", "18:00")
+            )
+        }
+    }
+    
     private fun convertToAppPlace(remote: SupabaseCachedPlace): AppPlace {
         val placeType = when (remote.placeType) {
             "RESTAURANT" -> PlaceType.RESTAURANT
@@ -155,15 +237,14 @@ class PlacesRepository(private val context: Context) {
             lat = remote.lat,
             lng = remote.lng,
             rating = remote.rating?.toFloat() ?: 4.0f,
-            isOpen = !remote.isPermanentlyClosed, // Use permanently closed status
+            isOpen = !remote.isPermanentlyClosed,
             priceLevel = remote.priceLevel ?: 2,
             estimatedCost = estimateCostFromPriceLevel(remote.priceLevel, placeType),
-            openHour = remote.openHour,
-            closeHour = remote.closeHour,
             isOutdoor = remote.isOutdoor,
             neighborhood = remote.neighborhoodId,
             reviewCount = remote.reviewCount,
-            nightlifeCategory = remote.nightlifeCategory
+            nightlifeCategory = remote.nightlifeCategory,
+            weeklyHours = convertWeeklyHours(remote.weeklyHours, placeType)
         )
     }
     
@@ -260,38 +341,33 @@ class PlacesRepository(private val context: Context) {
      * Sports: 7 AM - 10 PM (varies)
      */
     private fun AppPlace.withTypeDefaults(): AppPlace {
+        // Apply default weeklyHours and isOutdoor based on place type
+        val defaultHours = convertWeeklyHours(null, this.type)
         return when (this.type) {
-            PlaceType.MUSEUM -> this.copy(openHour = 10, closeHour = 17, isOutdoor = false)
-            PlaceType.PARK -> this.copy(openHour = 6, closeHour = 22, isOutdoor = true)
+            PlaceType.MUSEUM -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.PARK -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
             PlaceType.RESTAURANT -> this.copy(
-                openHour = 7, 
-                closeHour = 22, 
                 isOutdoor = false,
-                serviceStyle = getServiceStyle(this.id, this.priceLevel)
+                serviceStyle = getServiceStyle(this.id, this.priceLevel),
+                weeklyHours = defaultHours
             )
-            PlaceType.NIGHTLIFE -> this.copy(openHour = 16, closeHour = 2, isOutdoor = false)
-            PlaceType.SHOPPING -> this.copy(openHour = 10, closeHour = 21, isOutdoor = false)
-            PlaceType.WATERFRONT -> this.copy(openHour = 6, closeHour = 22, isOutdoor = true)
+            PlaceType.NIGHTLIFE -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.SHOPPING -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.WATERFRONT -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
             PlaceType.HISTORIC_SITE -> {
-                // Outdoor historic sites (trails, bridges, parks)
                 val outdoorSites = listOf("golden_gate_bridge", "batteries_to_bluffs", 
                     "telegraph_hill_stairs", "sutro_baths", "dutch_windmill", "presidio",
                     "fort_point", "pet_cemetery", "huntington_park", "harvey_milk_plaza")
-                if (this.id in outdoorSites) {
-                    this.copy(openHour = 6, closeHour = 22, isOutdoor = true)
-                } else {
-                    this.copy(openHour = 9, closeHour = 18, isOutdoor = false)
-                }
+                this.copy(isOutdoor = this.id in outdoorSites, weeklyHours = defaultHours)
             }
-            // New activity categories
-            PlaceType.ENTERTAINMENT -> this.copy(openHour = 19, closeHour = 23, isOutdoor = false)
-            PlaceType.GAMES -> this.copy(openHour = 11, closeHour = 22, isOutdoor = false)
-            PlaceType.OUTDOOR -> this.copy(openHour = 8, closeHour = 18, isOutdoor = true)
-            PlaceType.WELLNESS -> this.copy(openHour = 9, closeHour = 21, isOutdoor = false)
-            PlaceType.BREWERY -> this.copy(openHour = 12, closeHour = 21, isOutdoor = false)
-            PlaceType.CLASS -> this.copy(openHour = 10, closeHour = 20, isOutdoor = false)
-            PlaceType.MARKET -> this.copy(openHour = 7, closeHour = 14, isOutdoor = true)
-            PlaceType.SPORTS -> this.copy(openHour = 7, closeHour = 22, isOutdoor = true)
+            PlaceType.ENTERTAINMENT -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.GAMES -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.OUTDOOR -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
+            PlaceType.WELLNESS -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.BREWERY -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.CLASS -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.MARKET -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
+            PlaceType.SPORTS -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
         }
     }
     

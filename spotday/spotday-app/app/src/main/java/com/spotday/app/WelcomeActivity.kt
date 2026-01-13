@@ -1,5 +1,10 @@
 package com.spotday.app
 
+// TODO: Re-add spontaneous mode when GPS location services are implemented.
+// The "Spontaneous (Start Now)" feature should use the user's current GPS location
+// to find nearby venues and suggest what to do next. See ItineraryGenerator.kt
+// for the existing spontaneous mode logic that can be reused.
+
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -19,7 +24,6 @@ import com.spotday.app.api.PlacesRepository
 import com.spotday.app.model.ExplorationMode
 import com.spotday.app.ui.theme.SpotDayTheme
 import com.spotday.app.util.PreferencesManager
-import kotlinx.coroutines.launch
 
 // Available cities for testing
 data class CityOption(val id: String, val displayName: String)
@@ -53,7 +57,6 @@ fun WelcomeScreen() {
     val context = LocalContext.current
     val preferencesManager = remember { PreferencesManager(context) }
     val placesRepository = remember { PlacesRepository(context) }
-    val scope = rememberCoroutineScope()
     
     // Load saved preferences
     var selectedCity by remember { 
@@ -61,12 +64,9 @@ fun WelcomeScreen() {
     }
     var cityDropdownExpanded by remember { mutableStateOf(false) }
     var isPrefetching by remember { mutableStateOf(false) }
-    
-    var isSpontaneousMode by remember { mutableStateOf(preferencesManager.getSpontaneousMode()) }
     var timeRange by remember { 
         mutableStateOf(preferencesManager.getTimeRangeStart()..preferencesManager.getTimeRangeEnd()) 
     }
-    var durationHours by remember { mutableStateOf(preferencesManager.getDurationHours()) }
     var budget by remember { mutableStateOf(preferencesManager.getBudget()) }
     var isHungryNow by remember { mutableStateOf(preferencesManager.getHungryNow()) }
     var explorationMode by remember { 
@@ -92,16 +92,8 @@ fun WelcomeScreen() {
     }
     
     // Save preferences whenever they change
-    LaunchedEffect(isSpontaneousMode) {
-        preferencesManager.saveSpontaneousMode(isSpontaneousMode)
-    }
-    
     LaunchedEffect(timeRange) {
         preferencesManager.saveTimeRange(timeRange.start, timeRange.endInclusive)
-    }
-    
-    LaunchedEffect(durationHours) {
-        preferencesManager.saveDurationHours(durationHours)
     }
     
     LaunchedEffect(budget) {
@@ -117,11 +109,7 @@ fun WelcomeScreen() {
     }
     
     // Calculate total hours for current time selection
-    val totalHours = if (isSpontaneousMode) {
-        durationHours.toInt()
-    } else {
-        (timeRange.endInclusive - timeRange.start).toInt()
-    }
+    val totalHours = (timeRange.endInclusive - timeRange.start).toInt()
     
     // Show exploration toggle when time window >= 6 hours
     val showExplorationToggle = totalHours >= 6
@@ -192,73 +180,26 @@ fun WelcomeScreen() {
         
         Spacer(modifier = Modifier.height(48.dp))
         
-        // Mode selector
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Spontaneous (Start Now)",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Switch(
-                checked = isSpontaneousMode,
-                onCheckedChange = { isSpontaneousMode = it }
-            )
-        }
-        
+        // Time selection
         Text(
-            text = if (isSpontaneousMode) "Starts immediately from your location" else "Plan for a specific time",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp)
+            text = "What time will you be out?",
+            style = MaterialTheme.typography.titleMedium
         )
         
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         
-        // Conditional time selection based on mode
-        if (isSpontaneousMode) {
-            Text(
-                text = "How long from now?",
-                style = MaterialTheme.typography.titleMedium
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Slider(
-                value = durationHours,
-                onValueChange = { durationHours = it },
-                valueRange = 1f..8f,
-                steps = 6
-            )
-            
-            Text(
-                text = "${durationHours.toInt()} hours",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        } else {
-            Text(
-                text = "What time will you be out?",
-                style = MaterialTheme.typography.titleMedium
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            RangeSlider(
-                value = timeRange,
-                onValueChange = { timeRange = it },
-                valueRange = 6f..24f, // 6 AM to Midnight
-                steps = 17 // Every hour
-            )
-            
-            Text(
-                text = "${formatTime(timeRange.start.toInt())} - ${formatTime(timeRange.endInclusive.toInt())}",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
+        RangeSlider(
+            value = timeRange,
+            onValueChange = { timeRange = it },
+            valueRange = 6f..24f, // 6 AM to Midnight
+            steps = 17 // Every hour
+        )
+        
+        Text(
+            text = "${formatTime(timeRange.start.toInt())} - ${formatTime(timeRange.endInclusive.toInt())}",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(top = 8.dp)
+        )
         
         // Exploration mode toggle - only shown for 6+ hour windows
         AnimatedVisibility(visible = showExplorationToggle) {
@@ -318,43 +259,39 @@ fun WelcomeScreen() {
         
         Spacer(modifier = Modifier.height(48.dp))
         
+        // Check for hidden bar crawl mode trigger
+        // Triggered when: start >= 23 (11pm+) OR both handles at midnight (24-24)
+        val isBarCrawlMode = timeRange.start >= 23f || 
+            (timeRange.start >= 24f && timeRange.endInclusive >= 24f)
+        
         Button(
             onClick = {
                 try {
-                    // Calculate start and end hours based on mode
-                    val (startHour, endHour) = if (isSpontaneousMode) {
-                        val currentHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-                        val spontaneousStart = currentHour
-                        val spontaneousEnd = (currentHour + durationHours.toInt()).coerceAtMost(23)
-                        Pair(spontaneousStart, spontaneousEnd)
-                    } else {
-                        Pair(timeRange.start.toInt(), timeRange.endInclusive.toInt())
+                    // Check for bar crawl mode first
+                    if (isBarCrawlMode) {
+                        Log.d("WelcomeActivity", "🌙 BAR CRAWL MODE ACTIVATED! Time range: ${timeRange.start}-${timeRange.endInclusive}")
+                        val intent = Intent(context, BarCrawlSelectionActivity::class.java).apply {
+                            putExtra("totalBudget", budget)
+                            putExtra("cityId", selectedCity.id)
+                        }
+                        context.startActivity(intent)
+                        (context as? ComponentActivity)?.finish()
+                        return@Button
                     }
                     
-                    // Get mocked location for spontaneous mode
-                    val (startLat, startLng) = if (isSpontaneousMode) {
-                        com.spotday.app.util.LocationHelper.getRandomSFLocation()
-                    } else {
-                        Pair(0.0, 0.0) // Will be ignored in planned mode
-                    }
+                    val startHour = timeRange.start.toInt()
+                    val endHour = timeRange.endInclusive.toInt()
                     
                     val intent = Intent(context, ActivityPreferencesActivity::class.java).apply {
                         putExtra("startHour", startHour)
                         putExtra("endHour", endHour)
                         putExtra("totalBudget", budget)
                         putExtra("isHungryNow", isHungryNow)
-                        putExtra("isSpontaneousMode", isSpontaneousMode)
+                        putExtra("isSpontaneousMode", false)
                         putExtra("explorationMode", explorationMode.name)
                         putExtra("cityId", selectedCity.id)
-                        if (isSpontaneousMode) {
-                            putExtra("startLatitude", startLat)
-                            putExtra("startLongitude", startLng)
-                        }
                     }
-                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity from $startHour to $endHour with $$budget budget, hungryNow=$isHungryNow, spontaneous=$isSpontaneousMode")
-                    if (isSpontaneousMode) {
-                        Log.d("WelcomeActivity", "Spontaneous mode starting location: ($startLat, $startLng)")
-                    }
+                    Log.d("WelcomeActivity", "Starting ActivityPreferencesActivity from $startHour to $endHour with $$budget budget, hungryNow=$isHungryNow")
                     context.startActivity(intent)
                     (context as? ComponentActivity)?.finish()
                 } catch (e: Exception) {
@@ -363,7 +300,7 @@ fun WelcomeScreen() {
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Continue")
+            Text(if (isBarCrawlMode) "🌙 Let's Go!" else "Continue")
         }
     }
 }

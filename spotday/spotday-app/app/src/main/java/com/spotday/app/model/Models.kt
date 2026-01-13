@@ -57,6 +57,46 @@ enum class QuickStopType {
     STREET_ART
 }
 
+/**
+ * Opening hours for a specific day.
+ * Times are in "HH:mm" format (24-hour).
+ * For overnight closing (e.g., bars), close might be "02:00" with open "16:00".
+ */
+data class DayHours(
+    val open: String,   // "11:00"
+    val close: String   // "22:00" or "02:00" for overnight
+)
+
+/**
+ * Weekly opening hours for a place.
+ * null value for a day means the place is closed that day.
+ */
+data class WeeklyHours(
+    val monday: DayHours? = null,
+    val tuesday: DayHours? = null,
+    val wednesday: DayHours? = null,
+    val thursday: DayHours? = null,
+    val friday: DayHours? = null,
+    val saturday: DayHours? = null,
+    val sunday: DayHours? = null
+) {
+    /**
+     * Get hours for a specific day of week (1=Sunday, 7=Saturday, matching Calendar.DAY_OF_WEEK)
+     */
+    fun getHoursForDay(dayOfWeek: Int): DayHours? {
+        return when (dayOfWeek) {
+            java.util.Calendar.SUNDAY -> sunday
+            java.util.Calendar.MONDAY -> monday
+            java.util.Calendar.TUESDAY -> tuesday
+            java.util.Calendar.WEDNESDAY -> wednesday
+            java.util.Calendar.THURSDAY -> thursday
+            java.util.Calendar.FRIDAY -> friday
+            java.util.Calendar.SATURDAY -> saturday
+            else -> null
+        }
+    }
+}
+
 enum class ExplorationMode {
     ONE_AREA,    // Stay in one neighborhood (walkable)
     CITY_WIDE    // Visit highlights across town
@@ -137,6 +177,17 @@ data class Event(
     val source: EventSource = EventSource.TICKETMASTER
 )
 
+/** Default business hours: 9 AM - 10 PM daily */
+val DEFAULT_BUSINESS_HOURS = WeeklyHours(
+    monday = DayHours("09:00", "22:00"),
+    tuesday = DayHours("09:00", "22:00"),
+    wednesday = DayHours("09:00", "22:00"),
+    thursday = DayHours("09:00", "22:00"),
+    friday = DayHours("09:00", "22:00"),
+    saturday = DayHours("09:00", "22:00"),
+    sunday = DayHours("09:00", "22:00")
+)
+
 data class Place(
     val id: String,
     val name: String,
@@ -147,13 +198,12 @@ data class Place(
     val isOpen: Boolean = true,
     val priceLevel: Int = 2,      // 1=$, 2=$$, 3=$$$, 4=$$$$
     val estimatedCost: Int = 0,    // Calculated cost per person
-    val openHour: Int = 6,         // Opens at 6 AM by default
-    val closeHour: Int = 22,       // Closes at 10 PM by default
     val isOutdoor: Boolean = false, // For weather-aware recommendations
     val serviceStyle: ServiceStyle = ServiceStyle.CASUAL, // Restaurant service style
     val neighborhood: String? = null, // Neighborhood ID for clustering
-    val reviewCount: Int = 0,      // 0 = unknown, populated by Google Places API in Phase 2
-    val nightlifeCategory: String? = null // cocktail_bar, dive_bar, rooftop_bar, etc.
+    val reviewCount: Int = 0,      // 0 = unknown, populated by Google Places API
+    val nightlifeCategory: String? = null, // cocktail_bar, dive_bar, rooftop_bar, etc.
+    val weeklyHours: WeeklyHours = DEFAULT_BUSINESS_HOURS  // Day-specific opening hours
 )
 
 /**

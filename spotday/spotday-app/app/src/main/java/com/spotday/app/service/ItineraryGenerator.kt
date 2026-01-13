@@ -6,6 +6,7 @@ import com.spotday.app.api.NeighborhoodsRepository
 import com.spotday.app.api.PlacesRepository
 import com.spotday.app.api.QuickStopsRepository
 import com.spotday.app.api.ScenicRoutesRepository
+import com.spotday.app.model.DayHours
 import com.spotday.app.model.Event
 import com.spotday.app.model.ExplorationMode
 import com.spotday.app.model.ItineraryStop
@@ -17,6 +18,7 @@ import com.spotday.app.model.QuickStopType
 import com.spotday.app.model.ServiceStyle
 import com.spotday.app.model.StopType
 import com.spotday.app.model.Waypoint
+import com.spotday.app.model.WeeklyHours
 import com.spotday.app.util.TransitHelper
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -185,16 +187,29 @@ class ItineraryGenerator(
     }
     
     /**
-     * Check if a place is open at the given hour.
-     * Handles overnight hours (e.g., bar open 4 PM - 2 AM)
+     * Check if a place is open at the given hour on a specific day.
+     * Uses weeklyHours to determine if open. Handles overnight hours (e.g., bar open 4 PM - 2 AM)
+     * 
+     * @param place The place to check
+     * @param hour The hour to check (0-23)
+     * @param dayOfWeek The day of week (Calendar.SUNDAY through Calendar.SATURDAY)
      */
-    private fun isOpenAt(place: Place, hour: Int): Boolean {
-        return if (place.closeHour > place.openHour) {
+    private fun isOpenAt(place: Place, hour: Int, dayOfWeek: Int = Calendar.SATURDAY): Boolean {
+        val dayHours = place.weeklyHours.getHoursForDay(dayOfWeek)
+        
+        // null means closed on this day
+        if (dayHours == null) return false
+        
+        // Parse hours from "HH:mm" format
+        val openHour = dayHours.open.substringBefore(":").toIntOrNull() ?: return false
+        val closeHour = dayHours.close.substringBefore(":").toIntOrNull() ?: return false
+        
+        return if (closeHour > openHour) {
             // Normal hours (e.g., 10 AM - 5 PM)
-            hour >= place.openHour && hour < place.closeHour
+            hour >= openHour && hour < closeHour
         } else {
-            // Overnight hours (e.g., 4 PM - 2 AM means openHour=16, closeHour=2)
-            hour >= place.openHour || hour < place.closeHour
+            // Overnight hours (e.g., 4 PM - 2 AM)
+            hour >= openHour || hour < closeHour
         }
     }
     
@@ -202,23 +217,32 @@ class ItineraryGenerator(
      * Check if a venue is open for the entire duration starting at the given hour.
      * For example, if an activity takes 2 hours starting at 8 PM, ensure venue
      * doesn't close before 10 PM.
+     * 
+     * @param venue The venue to check
+     * @param startHour The start hour (0-23)
+     * @param durationMinutes The duration in minutes
+     * @param dayOfWeek The day of week (Calendar.SUNDAY through Calendar.SATURDAY)
      */
-    private fun isOpenForDuration(venue: Place, startHour: Int, durationMinutes: Int): Boolean {
+    private fun isOpenForDuration(venue: Place, startHour: Int, durationMinutes: Int, dayOfWeek: Int = Calendar.SATURDAY): Boolean {
         // Check start time
-        if (!isOpenAt(venue, startHour)) return false
+        if (!isOpenAt(venue, startHour, dayOfWeek)) return false
+        
+        // Get hours for this day
+        val dayHours = venue.weeklyHours.getHoursForDay(dayOfWeek) ?: return false
+        
+        val openHour = dayHours.open.substringBefore(":").toIntOrNull() ?: return false
+        val closeHour = dayHours.close.substringBefore(":").toIntOrNull() ?: return false
         
         // Check end time (when the activity would finish)
         val endHour = startHour + (durationMinutes / 60)
         val endMinutes = durationMinutes % 60
         
         // For normal hours (not overnight), check if we finish before closing
-        return if (venue.closeHour > venue.openHour) {
+        return if (closeHour > openHour) {
             // Normal hours: must finish before close time
-            // Allow finishing exactly at close time (endMinutes == 0 means we finish on the hour)
-            endHour < venue.closeHour || (endHour == venue.closeHour && endMinutes == 0)
+            endHour < closeHour || (endHour == closeHour && endMinutes == 0)
         } else {
             // Overnight hours (e.g., bar 4 PM - 2 AM)
-            // Either finish before midnight or in the early morning before close
             true // Simplified: assume overnight venues accommodate the activity
         }
     }
@@ -230,10 +254,16 @@ class ItineraryGenerator(
      * Example: Brewery opens at 12 PM, closes 9 PM, duration 75 min
      *          User window is 11 AM - 8 PM
      *          Returns 12 (can start at noon and finish by 1:15 PM, well before 9 PM)
+     * 
+     * @param venue The venue to check
+     * @param fromHour Start of the search window
+     * @param toHour End of the search window
+     * @param durationMinutes The activity duration
+     * @param dayOfWeek The day of week (Calendar.SUNDAY through Calendar.SATURDAY)
      */
-    private fun findEarliestOpenHour(venue: Place, fromHour: Int, toHour: Int, durationMinutes: Int = 60): Int? {
+    private fun findEarliestOpenHour(venue: Place, fromHour: Int, toHour: Int, durationMinutes: Int = 60, dayOfWeek: Int = Calendar.SATURDAY): Int? {
         for (hour in fromHour until toHour) {
-            if (isOpenForDuration(venue, hour, durationMinutes)) return hour
+            if (isOpenForDuration(venue, hour, durationMinutes, dayOfWeek)) return hour
         }
         return null
     }
@@ -458,26 +488,29 @@ class ItineraryGenerator(
     ): List<ItineraryStop> {
         Log.d("ItineraryGenerator", "BAR CRAWL MODE: Creating nightlife-only itinerary")
         
-        val totalHours = endHour - startHour
+        // Handle overnight hours (e.g., 22 to 2 = 4 hours, not -20)
+        val totalHours = if (endHour < startHour) {
+            (24 - startHour) + endHour  // Cross midnight
+        } else {
+            endHour - startHour
+        }
         val budgetBuffer = (totalBudget * BUDGET_BUFFER_PERCENTAGE).toInt()
         
-        // Calculate number of bars based on duration
-        // 1-3 hours: 1 bar, 4-5 hours: 2 bars, 6-7 hours: 3 bars, 8+ hours: 4+ bars
-        val barCount = when {
-            totalHours <= 3 -> 1
-            totalHours <= 5 -> 2
-            totalHours <= 7 -> 3
-            totalHours <= 10 -> 4
-            else -> 5
-        }
-        
-        // Calculate time per bar to fill the whole duration
+        // Bar crawl mode: 45 minutes per bar for maximum hopping
+        val minutesPerBar = 45
         val totalMinutes = totalHours * 60
+        
+        // Calculate how many bars fit with 45 min per bar + 30 min travel between
+        // Formula: (barCount × 45) + ((barCount - 1) × 30) <= totalMinutes
+        // Solve: 45×barCount + 30×barCount - 30 <= totalMinutes
+        //        75×barCount <= totalMinutes + 30
+        val maxBars = ((totalMinutes + 30) / 75).coerceAtLeast(1).coerceAtMost(6)
+        val barCount = maxBars
+        
         val travelTimeTotal = (barCount - 1) * TRAVEL_TIME_MINUTES  // No travel after last bar
         val availableMinutes = totalMinutes - travelTimeTotal
-        val minutesPerBar = (availableMinutes / barCount).coerceAtLeast(60).coerceAtMost(180)  // 1-3 hours per bar
         
-        Log.d("ItineraryGenerator", "Bar crawl: $barCount venues over $totalHours hours ($minutesPerBar min each)")
+        Log.d("ItineraryGenerator", "Bar crawl: $barCount venues over $totalHours hours ($minutesPerBar min each, total time: ${totalMinutes}min)")
         
         val candidateNightlife = placesRepository.searchNightlife(nightlifeTypes)
         val sortedNightlife = candidateNightlife
@@ -487,16 +520,76 @@ class ItineraryGenerator(
                     .thenBy { it.estimatedCost }
             )
         
-        // Initialize starting location
+        // Initialize starting location using city-aware neighborhoods
+        val cityId = placesRepository.currentCityId
         val (initialLat, initialLng) = when {
-            userStartLat != null && userStartLng != null -> Pair(userStartLat, userStartLng)
+            userStartLat != null && userStartLng != null -> {
+                Log.d("ItineraryGenerator", "Bar crawl using provided location: ($userStartLat, $userStartLng)")
+                Pair(userStartLat, userStartLng)
+            }
             else -> {
-                val startingLocations = listOf(
-                    Pair(37.8080, -122.4177), Pair(37.7749, -122.4194), Pair(37.7599, -122.4148),
-                    Pair(37.8000, -122.4100), Pair(37.7700, -122.4500), Pair(37.7615, -122.4350),
-                    Pair(37.7800, -122.4600), Pair(37.8000, -122.4350)
-                )
-                startingLocations.random()
+                // Weighted random selection: neighborhoods with more bars get higher probability
+                // but there's still variety to explore different areas
+                val venueCounts = candidateNightlife
+                    .mapNotNull { it.neighborhood }
+                    .groupingBy { it }
+                    .eachCount()
+                
+                if (venueCounts.isNotEmpty()) {
+                    // Weighted random pick based on venue count
+                    val totalWeight = venueCounts.values.sum()
+                    var randomValue = (0 until totalWeight).random()
+                    
+                    var selectedNeighborhoodId: String? = null
+                    for ((neighborhoodId, count) in venueCounts) {
+                        randomValue -= count
+                        if (randomValue < 0) {
+                            selectedNeighborhoodId = neighborhoodId
+                            break
+                        }
+                    }
+                    
+                    // Get the neighborhood data for coordinates
+                    val selectedNeighborhood = selectedNeighborhoodId?.let { 
+                        neighborhoodsRepository.getNeighborhood(cityId, it) 
+                    }
+                    
+                    if (selectedNeighborhood != null) {
+                        val venueCount = venueCounts[selectedNeighborhoodId] ?: 0
+                        Log.d("ItineraryGenerator", "Bar crawl starting from ${selectedNeighborhood.name} (weighted: $venueCount/$totalWeight venues)")
+                        Pair(selectedNeighborhood.centerLat, selectedNeighborhood.centerLng)
+                    } else {
+                        // Fallback: pick first venue from the selected neighborhood
+                        val firstVenueInNeighborhood = candidateNightlife.find { it.neighborhood == selectedNeighborhoodId }
+                        if (firstVenueInNeighborhood != null) {
+                            Log.d("ItineraryGenerator", "Bar crawl starting from venue in $selectedNeighborhoodId")
+                            Pair(firstVenueInNeighborhood.lat, firstVenueInNeighborhood.lng)
+                        } else {
+                            // Use first available venue
+                            val firstVenue = candidateNightlife.firstOrNull()
+                            if (firstVenue != null) {
+                                Log.d("ItineraryGenerator", "Bar crawl starting from first venue: ${firstVenue.name}")
+                                Pair(firstVenue.lat, firstVenue.lng)
+                            } else {
+                                // Last resort: city center
+                                val cityProfile = neighborhoodsRepository.getCityProfile(cityId)
+                                Log.d("ItineraryGenerator", "Bar crawl using $cityId city center (no venues found)")
+                                Pair(cityProfile?.centerLat ?: 33.4484, cityProfile?.centerLng ?: -112.074)
+                            }
+                        }
+                    }
+                } else {
+                    // No neighborhood data on venues - use first venue or city center
+                    val firstVenue = candidateNightlife.firstOrNull()
+                    if (firstVenue != null) {
+                        Log.d("ItineraryGenerator", "Bar crawl starting from first venue (no neighborhoods): ${firstVenue.name}")
+                        Pair(firstVenue.lat, firstVenue.lng)
+                    } else {
+                        val cityProfile = neighborhoodsRepository.getCityProfile(cityId)
+                        Log.e("ItineraryGenerator", "No venues for bar crawl in $cityId, using city center")
+                        Pair(cityProfile?.centerLat ?: 33.4484, cityProfile?.centerLng ?: -112.074)
+                    }
+                }
             }
         }
         
@@ -508,6 +601,10 @@ class ItineraryGenerator(
             set(Calendar.SECOND, 0)
         }
         
+        // Get the day of week for checking opening hours
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        Log.d("ItineraryGenerator", "Bar crawl day of week: $dayOfWeek (1=Sun, 7=Sat)")
+        
         var currentCost = 0
         var currentLat = initialLat
         var currentLng = initialLng
@@ -516,11 +613,26 @@ class ItineraryGenerator(
         
         for (i in 0 until barCount) {
             val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
-            // Find closest unused bar within budget and open at this hour
+            
+            // Check if we've reached the end time (handling overnight)
+            val shouldStop = if (endHour < startHour) {
+                // Overnight: stop if we're past endHour but before startHour
+                currentHour >= endHour && currentHour < startHour
+            } else {
+                // Same day: stop if we've reached or passed endHour
+                currentHour >= endHour
+            }
+            
+            if (shouldStop) {
+                Log.d("ItineraryGenerator", "Reached end time at ${currentHour}:00")
+                break
+            }
+            
+            // Find closest unused bar within budget and open at this hour (using day-specific hours)
             val availableBars = sortedNightlife
                 .filterNot { usedPlaces.contains(it.id) }
                 .filter { currentCost + it.estimatedCost <= budgetBuffer }
-                .filter { isOpenForDuration(it, currentHour, NIGHTLIFE_DURATION_MINUTES) }
+                .filter { isOpenForDuration(it, currentHour, minutesPerBar, dayOfWeek) }
             
             if (availableBars.isEmpty()) {
                 Log.d("ItineraryGenerator", "No more bars available within budget")
@@ -546,7 +658,7 @@ class ItineraryGenerator(
             // Add travel time between bars
             calendar.add(Calendar.MINUTE, TRAVEL_TIME_MINUTES)
             
-            Log.d("ItineraryGenerator", "Bar ${i+1}/$barCount: ${selectedBar.name} (cost: $${selectedBar.estimatedCost}, distance: ${"%.2f".format(distance)} km)")
+            Log.d("ItineraryGenerator", "Bar ${i+1}/$barCount: ${selectedBar.name} at ${currentHour}:00 (cost: $${selectedBar.estimatedCost}, distance: ${"%.2f".format(distance)} km)")
         }
         
         Log.d("ItineraryGenerator", "Bar crawl complete: ${itinerary.size} venues, $$currentCost total, ${"%.2f".format(totalDistance)} km")
@@ -590,6 +702,11 @@ class ItineraryGenerator(
             Log.d("ItineraryGenerator", "BAR CRAWL MODE triggered (nightlife only, no activities)")
             return generateBarCrawl(startHour, endHour, totalBudget, nightlifeTypes, userStartLat, userStartLng)
         }
+
+        // Get the day of week for the itinerary (used for opening hours checks)
+        // This uses TODAY's date - the itinerary is for today
+        val itineraryDayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+        Log.d("ItineraryGenerator", "Itinerary day of week: $itineraryDayOfWeek (1=Sun, 7=Sat)")
 
         // Fetch selected events (if any) - these are FIXED anchors
         val selectedEvents = if (selectedEventIds.isNotEmpty()) {
@@ -654,14 +771,16 @@ class ItineraryGenerator(
         Log.d("ItineraryGenerator", "Loaded ${candidateActivities.size} candidate activities for types: $activityTypes")
         // Log breakdown by type
         candidateActivities.groupBy { it.type }.forEach { (type, places) ->
-            Log.d("ItineraryGenerator", "  - $type: ${places.size} venues (hours: ${places.firstOrNull()?.openHour}-${places.firstOrNull()?.closeHour})")
+            val sampleHours = places.firstOrNull()?.weeklyHours?.friday
+            Log.d("ItineraryGenerator", "  - $type: ${places.size} venues (sample Fri hours: ${sampleHours?.open}-${sampleHours?.close})")
         }
         
         // Pre-filter to venues that can fit their full activity duration within user's time window
         // This prevents scheduling failures when venues open later (e.g., breweries at noon)
+        // Uses day-specific hours (e.g., museums closed on Mondays)
         val activitiesAvailableToday = candidateActivities.filter { venue ->
             val duration = getDuration(venue.type)
-            findEarliestOpenHour(venue, startHour, endHour, duration) != null
+            findEarliestOpenHour(venue, startHour, endHour, duration, itineraryDayOfWeek) != null
         }
         
         if (activitiesAvailableToday.size < candidateActivities.size) {
@@ -916,6 +1035,9 @@ class ItineraryGenerator(
             set(Calendar.SECOND, 0)
         }
         
+        // Use the itinerary day of week we determined earlier for all opening hours checks
+        val dayOfWeek = itineraryDayOfWeek
+        
         // Build a combined timeline of slots + events, sorted by time
         var eventIndex = 0
         
@@ -973,12 +1095,12 @@ class ItineraryGenerator(
                     val isDinnerTime = currentHour >= DINNER_START_HOUR
                     
                     // Find unselected restaurants within budget using nearest-neighbor
-                    // Also filter by operating hours
+                    // Also filter by operating hours (using day-specific hours)
                     // FORMAL restaurants are only allowed for dinner (17:00+)
                     val availableRestaurants = sortedRestaurants
                         .filterNot { usedPlaces.contains(it.id) }
                         .filter { currentCost + it.estimatedCost <= budgetBuffer }
-                        .filter { isOpenForDuration(it, currentHour, getDuration(it)) }
+                        .filter { isOpenForDuration(it, currentHour, getDuration(it), dayOfWeek) }
                         .filter { restaurant ->
                             // Only allow formal dining for dinner slots
                             if (restaurant.serviceStyle == ServiceStyle.FORMAL) {
@@ -1021,11 +1143,11 @@ class ItineraryGenerator(
                 "activity" -> {
                     val currentHour = slot.idealHour
                     // Find unselected activities within budget using nearest-neighbor
-                    // Also filter by operating hours
+                    // Also filter by operating hours (using day-specific hours)
                     val availableNow = sortedActivities
                         .filterNot { usedPlaces.contains(it.id) }
                         .filter { currentCost + it.estimatedCost <= budgetBuffer }
-                        .filter { isOpenForDuration(it, currentHour, getDuration(it.type)) }
+                        .filter { isOpenForDuration(it, currentHour, getDuration(it.type), dayOfWeek) }
                     
                     // Look-ahead scheduling: if nothing open now, find what opens soonest
                     val (availableActivities, waitMinutes) = if (availableNow.isNotEmpty()) {
@@ -1037,7 +1159,7 @@ class ItineraryGenerator(
                             .filter { currentCost + it.estimatedCost <= budgetBuffer }
                             .mapNotNull { venue ->
                                 val duration = getDuration(venue.type)
-                                findEarliestOpenHour(venue, currentHour, endHour, duration)?.let { opensAt ->
+                                findEarliestOpenHour(venue, currentHour, endHour, duration, dayOfWeek)?.let { opensAt ->
                                     venue to ((opensAt - currentHour) * 60)
                                 }
                             }
@@ -1074,12 +1196,12 @@ class ItineraryGenerator(
                                                 (gapCurrentHour in 17..19)    // Dinner
                                 
                                 if (isMealTime) {
-                                    // Find a quick restaurant
+                                    // Find a quick restaurant (using day-specific hours)
                                     val quickMealOptions = sortedRestaurants
                                         .filterNot { usedPlaces.contains(it.id) }
                                         .filter { currentCost + it.estimatedCost <= budgetBuffer }
                                         .filter { it.serviceStyle == ServiceStyle.QUICK || it.serviceStyle == ServiceStyle.CASUAL }
-                                        .filter { isOpenAt(it, gapCurrentHour) }
+                                        .filter { isOpenAt(it, gapCurrentHour, dayOfWeek) }
                                         .take(3)
                                     
                                     if (quickMealOptions.isNotEmpty()) {
@@ -1195,13 +1317,14 @@ class ItineraryGenerator(
                     
                     // Only add if we have time before end hour
                     val nightlifeHour = nightlifeCalendar.get(Calendar.HOUR_OF_DAY)
+                    val nightlifeDayOfWeek = nightlifeCalendar.get(Calendar.DAY_OF_WEEK)
                     if (nightlifeHour < endHour - 1) {
                         // Find closest unused nightlife venue within budget
-                        // Also filter by operating hours
+                        // Also filter by operating hours (using day-specific hours)
                         val availableBars = sortedNightlife
                             .filterNot { usedPlaces.contains(it.id) }
                             .filter { currentCost + it.estimatedCost <= budgetBuffer }
-                            .filter { isOpenAt(it, nightlifeHour) }
+                            .filter { isOpenAt(it, nightlifeHour, nightlifeDayOfWeek) }
                         
                         if (availableBars.isNotEmpty()) {
                             val sortedByDistance = availableBars.sortedBy { 
@@ -1302,9 +1425,16 @@ class ItineraryGenerator(
                 else -> 4
             },
             estimatedCost = event.priceMin?.toInt() ?: 0,
-            openHour = 0,
-            closeHour = 24,
-            isOutdoor = false
+            isOutdoor = false,
+            weeklyHours = WeeklyHours(
+                monday = DayHours("00:00", "23:59"),
+                tuesday = DayHours("00:00", "23:59"),
+                wednesday = DayHours("00:00", "23:59"),
+                thursday = DayHours("00:00", "23:59"),
+                friday = DayHours("00:00", "23:59"),
+                saturday = DayHours("00:00", "23:59"),
+                sunday = DayHours("00:00", "23:59")
+            )
         )
         
         // Create calendar at event start time
