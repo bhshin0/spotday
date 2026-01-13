@@ -1,6 +1,6 @@
 // sync-events Edge Function
 // Fetches events from Ticketmaster API and caches them in Supabase
-// Runs nightly at 11 PM PT via cron (before the next day)
+// Runs nightly at 12:15 AM Eastern via cron (5:15 AM UTC)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
