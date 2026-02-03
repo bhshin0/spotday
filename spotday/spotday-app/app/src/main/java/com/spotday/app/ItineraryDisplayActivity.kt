@@ -7,11 +7,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,6 +32,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
@@ -135,7 +146,10 @@ class ItineraryViewModel(
     
     var isLoading by mutableStateOf(true)
         private set
-    
+
+    var isRefreshing by mutableStateOf(false)
+        private set
+
     var error by mutableStateOf<String?>(null)
         private set
     
@@ -167,13 +181,17 @@ class ItineraryViewModel(
         Log.d("ItineraryViewModel", "Regenerating itinerary...")
         // Keep current weather when regenerating - no need to re-fetch
         _avoidOutdoor = WeatherHelper.shouldAvoidOutdoor(_weatherForecast)
-        generateItinerary(_avoidOutdoor)
+        generateItinerary(_avoidOutdoor, isRefresh = true)
     }
-    
-    private fun generateItinerary(avoidOutdoorParam: Boolean) {
+
+    private fun generateItinerary(avoidOutdoorParam: Boolean, isRefresh: Boolean = false) {
         viewModelScope.launch {
             try {
-                isLoading = true
+                if (isRefresh) {
+                    isRefreshing = true
+                } else {
+                    isLoading = true
+                }
                 error = null
                 Log.d("ItineraryViewModel", "Generating itinerary...")
                 itinerary = withContext(Dispatchers.IO) {
@@ -195,11 +213,12 @@ class ItineraryViewModel(
                     )
                 }
                 Log.d("ItineraryViewModel", "Itinerary generated with ${itinerary.size} stops")
-                isLoading = false
             } catch (e: Exception) {
                 Log.e("ItineraryViewModel", "Error generating itinerary", e)
                 error = "Failed to generate itinerary: ${e.message}"
+            } finally {
                 isLoading = false
+                isRefreshing = false
             }
         }
     }
@@ -303,6 +322,7 @@ fun ItineraryDisplayScreen(
                 hasLocationPermission = hasLocationPermission,
                 weatherForecast = viewModel.weatherForecast,
                 avoidOutdoor = viewModel.avoidOutdoor,
+                isRefreshing = viewModel.isRefreshing,
                 onRegenerate = { viewModel.regenerateItinerary() }
             )
         }
@@ -316,6 +336,7 @@ fun ItineraryContent(
     hasLocationPermission: Boolean,
     weatherForecast: WeatherHelper.WeatherForecast,
     avoidOutdoor: Boolean,
+    isRefreshing: Boolean,
     onRegenerate: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -327,7 +348,7 @@ fun ItineraryContent(
         ) {
             ItineraryMap(itinerary = itinerary)
         }
-        
+
         // Timeline (bottom half)
         Box(
             modifier = Modifier
@@ -340,6 +361,7 @@ fun ItineraryContent(
                 totalBudget = totalBudget,
                 weatherForecast = weatherForecast,
                 avoidOutdoor = avoidOutdoor,
+                isRefreshing = isRefreshing,
                 onRegenerate = onRegenerate
             )
         }
@@ -382,7 +404,15 @@ fun ItineraryMap(itinerary: List<ItineraryStop>) {
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(mapCenter, 13f)
     }
-    
+
+    // Re-center map when itinerary changes
+    LaunchedEffect(mapCenter) {
+        cameraPositionState.animate(
+            update = CameraUpdateFactory.newLatLngZoom(mapCenter, 13f),
+            durationMs = 500
+        )
+    }
+
     // Separate main stops from waypoints/quick stops for different rendering
     val mainStops = itinerary.filter { it.stopType == StopType.MAIN }
     val waypointStops = itinerary.filter { it.stopType == StopType.WAYPOINT || it.stopType == StopType.QUICK_STOP }
@@ -401,33 +431,34 @@ fun ItineraryMap(itinerary: List<ItineraryStop>) {
             tiltGesturesEnabled = false
         )
     ) {
-        // Add numbered markers for main stops
+        // Add numbered markers for main stops with colors matching timeline
         var mainIndex = 1
         mainStops.forEach { stop ->
             val lat = stop.place?.lat ?: stop.event?.venueLatitude ?: return@forEach
             val lng = stop.place?.lng ?: stop.event?.venueLongitude ?: return@forEach
             val name = stop.place?.name ?: stop.event?.name ?: "Stop"
             val position = LatLng(lat, lng)
-            
+            val markerHue = getMarkerHue(stop)
+
             Marker(
                 state = MarkerState(position = position),
                 title = "${mainIndex}. $name",
-                snippet = "${stop.startTime} - ${stop.endTime}"
+                snippet = "${stop.startTime} - ${stop.endTime}",
+                icon = BitmapDescriptorFactory.defaultMarker(markerHue)
             )
             mainIndex++
         }
         
-        // Add small circles for waypoints and quick stops
+        // Add small circles for waypoints and quick stops (gray to match timeline)
         waypointStops.forEach { stop ->
             val lat = stop.waypoint?.lat ?: return@forEach
             val lng = stop.waypoint?.lng ?: return@forEach
             val position = LatLng(lat, lng)
-            
+
             Circle(
                 center = position,
                 radius = 40.0, // Small circle in meters
-                fillColor = if (stop.stopType == StopType.QUICK_STOP) 
-                    Color(0x99E8DEF8) else Color(0x99CCCCCC),
+                fillColor = Color(0x99757575),  // Gray matching timeline
                 strokeColor = Color.White,
                 strokeWidth = 2f
             )
@@ -456,90 +487,102 @@ fun ItineraryMap(itinerary: List<ItineraryStop>) {
     }
 }
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun ItineraryTimeline(
     itinerary: List<ItineraryStop>,
     totalBudget: Int,
     weatherForecast: WeatherHelper.WeatherForecast,
     avoidOutdoor: Boolean,
+    isRefreshing: Boolean,
     onRegenerate: () -> Unit
 ) {
     val scrollState = rememberScrollState()
     val estimatedCost = itinerary.sumOf { it.place?.estimatedCost ?: 0 }
-    
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "Your Itinerary",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        
-        // Show the primary neighborhood focus
-        val primaryNeighborhood = remember(itinerary) {
-            getPrimaryNeighborhood(itinerary)
-        }
-        
-        if (primaryNeighborhood != null) {
+    val pullRefreshState = rememberPullRefreshState(
+        refreshing = isRefreshing,
+        onRefresh = onRegenerate
+    )
+
+    Box(modifier = Modifier.pullRefresh(pullRefreshState)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(16.dp)
+        ) {
             Text(
-                text = "📍 Focused on: $primaryNeighborhood",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(bottom = 16.dp)
+                text = "Your Itinerary",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(bottom = 8.dp)
             )
-        } else {
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-        
-        if (itinerary.isEmpty()) {
-            Text(
-                text = "No itinerary available. Try selecting different preferences.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            // Weather banner
-            WeatherBanner(
-                forecast = weatherForecast,
-                avoidOutdoor = avoidOutdoor
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Budget summary card
-            BudgetSummaryCard(
-                budget = totalBudget,
-                estimatedCost = estimatedCost
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            itinerary.forEachIndexed { index, stop ->
-                ItineraryStopCard(stop = stop)
-                
-                // Add travel time indicator between stops
-                if (index < itinerary.size - 1) {
-                    val nextStop = itinerary[index + 1]
-                    TravelTimeIndicator(transitEstimate = nextStop.transitEstimate)
+
+            // Show the primary neighborhood focus
+            val primaryNeighborhood = remember(itinerary) {
+                getPrimaryNeighborhood(itinerary)
+            }
+
+            if (primaryNeighborhood != null) {
+                Text(
+                    text = "📍 Focused on: $primaryNeighborhood",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            if (itinerary.isEmpty()) {
+                Text(
+                    text = "No itinerary available. Try selecting different preferences.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                // Weather banner
+                WeatherBanner(
+                    forecast = weatherForecast,
+                    avoidOutdoor = avoidOutdoor
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Budget summary card
+                BudgetSummaryCard(
+                    budget = totalBudget,
+                    estimatedCost = estimatedCost
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                itinerary.forEachIndexed { index, stop ->
+                    TimelineStopRow(
+                        stop = stop,
+                        isFirst = index == 0,
+                        isLast = index == itinerary.lastIndex && itinerary.getOrNull(index + 1)?.transitEstimate == null
+                    ) {
+                        ItineraryStopCard(stop = stop)
+                    }
+
+                    // Add travel time indicator between stops
+                    if (index < itinerary.size - 1) {
+                        val nextStop = itinerary[index + 1]
+                        TimelineTravelIndicator(
+                            transitEstimate = nextStop.transitEstimate
+                        )
+                    }
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // Regenerate button
-            OutlinedButton(
-                onClick = onRegenerate,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Show Different Options")
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
         }
+
+        PullRefreshIndicator(
+            refreshing = isRefreshing,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 }
 
@@ -627,25 +670,27 @@ fun ItineraryStopCard(stop: ItineraryStop) {
 
 @Composable
 fun MainStopCard(stop: ItineraryStop) {
-    val isNightlife = stop.place?.type == PlaceType.NIGHTLIFE
+    val isNightlife = stop.place?.type == PlaceType.NIGHTLIFE || stop.place?.type == PlaceType.BREWERY
     val isEvent = stop.event != null
     val placeName = stop.place?.name ?: stop.event?.name ?: "Unknown"
-    
+
+    // Get the accent color for the left border
+    val accentColor = getTimelineColor(stop)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 4.dp)
+            .border(
+                width = 3.dp,
+                color = accentColor,
+                shape = RoundedCornerShape(12.dp)
+            ),
         elevation = CardDefaults.cardElevation(defaultElevation = if (isEvent) 4.dp else 2.dp),
         shape = RoundedCornerShape(12.dp),
-        colors = when {
-            isEvent -> CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer
-            )
-            isNightlife -> CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.tertiaryContainer
-            )
-            else -> CardDefaults.cardColors()
-        }
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Column(
             modifier = Modifier
@@ -666,11 +711,7 @@ fun MainStopCard(stop: ItineraryStop) {
                 Text(
                     text = placeName,
                     style = MaterialTheme.typography.titleLarge,
-                    color = when {
-                        isEvent -> MaterialTheme.colorScheme.onSecondaryContainer
-                        isNightlife -> MaterialTheme.colorScheme.onTertiaryContainer
-                        else -> MaterialTheme.colorScheme.primary
-                    }
+                    color = accentColor
                 )
             }
             
@@ -678,7 +719,7 @@ fun MainStopCard(stop: ItineraryStop) {
                 Text(
                     text = "@ ${stop.event.venueName}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                    color = accentColor.copy(alpha = 0.8f)
                 )
             }
             
@@ -714,15 +755,14 @@ fun MainStopCard(stop: ItineraryStop) {
                                 PlaceType.CLASS -> "Class"
                                 PlaceType.MARKET -> "Market"
                                 PlaceType.SPORTS -> "Sports"
+                                PlaceType.ZOO -> "Zoo"
+                                PlaceType.CINEMA -> "Cinema"
+                                PlaceType.ATTRACTION -> "Attraction"
                             }
                         } ?: ""
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = when {
-                        isEvent -> MaterialTheme.colorScheme.secondary
-                        isNightlife -> MaterialTheme.colorScheme.tertiary
-                        else -> MaterialTheme.colorScheme.secondary
-                    }
+                    color = accentColor.copy(alpha = 0.8f)
                 )
             }
             
@@ -773,17 +813,19 @@ fun MainStopCard(stop: ItineraryStop) {
 
 @Composable
 fun WaypointCard(stop: ItineraryStop) {
+    val accentColor = getTimelineColor(stop)
+
     // Smaller, muted card for scenic pass-through points
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp, horizontal = 16.dp),
+            .padding(vertical = 2.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = "◇",
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.outline
+            color = accentColor
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column {
@@ -813,12 +855,19 @@ fun QuickStopCard(stop: ItineraryStop) {
         QuickStopType.STREET_ART -> "🎨"
         null -> "☕" // Default fallback
     }
-    
+
+    val accentColor = getTimelineColor(stop)
+
     // Compact card for coffee/photo breaks
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 2.dp)
+            .border(
+                width = 2.dp,
+                color = accentColor,
+                shape = RoundedCornerShape(8.dp)
+            ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
@@ -861,11 +910,18 @@ fun QuickStopCard(stop: ItineraryStop) {
 
 @Composable
 fun FreeTimeCard(stop: ItineraryStop) {
+    val accentColor = getTimelineColor(stop)
+
     // Card for exploration/free time periods
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 2.dp)
+            .border(
+                width = 2.dp,
+                color = accentColor,
+                shape = RoundedCornerShape(8.dp)
+            ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
@@ -953,8 +1009,202 @@ private fun getPrimaryNeighborhood(itinerary: List<ItineraryStop>): String? {
 /**
  * Capitalize each word in a string (e.g., "mission_district" -> "Mission District")
  */
-private fun String.capitalizeWords(): String = 
+private fun String.capitalizeWords(): String =
     split(" ", "_").joinToString(" ") { it.lowercase().replaceFirstChar { c -> c.uppercase() } }
+
+/**
+ * Returns the timeline color for a stop based on its type.
+ * - Restaurants: Orange
+ * - Nightlife/Breweries: Purple
+ * - Activities (museums, parks, events, etc.): Blue
+ * - Quick stops/Waypoints: Gray
+ * - Free time: Light gray
+ */
+private fun getTimelineColor(stop: ItineraryStop): Color {
+    return when {
+        stop.stopType == StopType.QUICK_STOP -> Color(0xFF757575)  // Gray
+        stop.stopType == StopType.WAYPOINT -> Color(0xFF757575)    // Gray
+        stop.stopType == StopType.FREE_TIME -> Color(0xFF9E9E9E)   // Light gray
+        stop.place?.type == PlaceType.RESTAURANT -> Color(0xFFE65100)  // Orange
+        stop.place?.type == PlaceType.NIGHTLIFE -> Color(0xFF7B1FA2)   // Purple
+        stop.place?.type == PlaceType.BREWERY -> Color(0xFF7B1FA2)     // Purple
+        else -> Color(0xFF1565C0)  // Blue - all activities (events, museums, parks, etc.)
+    }
+}
+
+/**
+ * Returns the marker hue for Google Maps markers based on stop type.
+ * Uses BitmapDescriptorFactory hue values.
+ */
+private fun getMarkerHue(stop: ItineraryStop): Float {
+    return when {
+        stop.place?.type == PlaceType.RESTAURANT -> BitmapDescriptorFactory.HUE_ORANGE
+        stop.place?.type == PlaceType.NIGHTLIFE -> BitmapDescriptorFactory.HUE_VIOLET
+        stop.place?.type == PlaceType.BREWERY -> BitmapDescriptorFactory.HUE_VIOLET
+        else -> BitmapDescriptorFactory.HUE_AZURE  // Blue for activities
+    }
+}
+
+/**
+ * Timeline node component - draws the dot/diamond and connecting lines
+ */
+@Composable
+fun TimelineNode(
+    color: Color,
+    isFirst: Boolean,
+    isLast: Boolean,
+    isMinor: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val lineColor = Color(0xFFBDBDBD)
+
+    Canvas(
+        modifier = modifier
+            .width(24.dp)
+            .fillMaxHeight()
+    ) {
+        val centerX = size.width / 2
+        val nodeRadius = if (isMinor) 4.dp.toPx() else 6.dp.toPx()
+
+        // Draw line above (if not first)
+        if (!isFirst) {
+            drawLine(
+                color = lineColor,
+                start = Offset(centerX, 0f),
+                end = Offset(centerX, size.height / 2 - nodeRadius),
+                strokeWidth = 2.dp.toPx()
+            )
+        }
+
+        // Draw line below (if not last)
+        if (!isLast) {
+            drawLine(
+                color = lineColor,
+                start = Offset(centerX, size.height / 2 + nodeRadius),
+                end = Offset(centerX, size.height),
+                strokeWidth = 2.dp.toPx()
+            )
+        }
+
+        // Draw the node indicator
+        if (isMinor) {
+            // Draw diamond for minor stops (quick stops/waypoints)
+            val diamondSize = 5.dp.toPx()
+            val path = Path().apply {
+                moveTo(centerX, size.height / 2 - diamondSize)
+                lineTo(centerX + diamondSize, size.height / 2)
+                lineTo(centerX, size.height / 2 + diamondSize)
+                lineTo(centerX - diamondSize, size.height / 2)
+                close()
+            }
+            drawPath(path, color)
+        } else {
+            // Draw circle for main stops
+            drawCircle(
+                color = color,
+                radius = nodeRadius,
+                center = Offset(centerX, size.height / 2)
+            )
+        }
+    }
+}
+
+/**
+ * Wraps a stop card with the timeline node
+ */
+@Composable
+fun TimelineStopRow(
+    stop: ItineraryStop,
+    isFirst: Boolean,
+    isLast: Boolean,
+    content: @Composable () -> Unit
+) {
+    val color = getTimelineColor(stop)
+    val isMinor = stop.stopType == StopType.QUICK_STOP ||
+                  stop.stopType == StopType.WAYPOINT ||
+                  stop.stopType == StopType.FREE_TIME
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Timeline node on the left
+        Box(
+            modifier = Modifier
+                .width(32.dp)
+                .heightIn(min = if (isMinor) 48.dp else 80.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            TimelineNode(
+                color = color,
+                isFirst = isFirst,
+                isLast = isLast,
+                isMinor = isMinor,
+                modifier = Modifier.fillMaxHeight()
+            )
+        }
+
+        // Card content with accent border
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 4.dp)
+        ) {
+            content()
+        }
+    }
+}
+
+/**
+ * Timeline travel indicator between stops
+ */
+@Composable
+fun TimelineTravelIndicator(
+    transitEstimate: TransitEstimate?
+) {
+    if (transitEstimate == null) return
+
+    val lineColor = Color(0xFFBDBDBD)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(40.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Timeline connector line
+        Box(
+            modifier = Modifier
+                .width(32.dp)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val centerX = size.width / 2
+                drawLine(
+                    color = lineColor,
+                    start = Offset(centerX, 0f),
+                    end = Offset(centerX, size.height),
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
+        }
+
+        // Travel info
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "🚶 ${transitEstimate.walkingMinutes}m  🚗 ${transitEstimate.drivingMinutes}m",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
 
 @Composable
 fun WeatherBanner(

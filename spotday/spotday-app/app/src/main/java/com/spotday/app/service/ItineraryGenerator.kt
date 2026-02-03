@@ -50,6 +50,9 @@ class ItineraryGenerator(
         private const val CLASS_DURATION_MINUTES = 120 // 2 hours (cooking, pottery)
         private const val MARKET_DURATION_MINUTES = 60 // 1 hour (browsing)
         private const val SPORTS_DURATION_MINUTES = 120 // 2 hours (golf, climbing)
+        private const val ZOO_DURATION_MINUTES = 180 // 3 hours (zoo, aquarium)
+        private const val CINEMA_DURATION_MINUTES = 150 // 2.5 hours (movie)
+        private const val ATTRACTION_DURATION_MINUTES = 90 // 1.5 hours (tourist spot)
         
         private const val TRAVEL_TIME_MINUTES = 30
         private const val BUDGET_BUFFER_PERCENTAGE = 1.2 // Allow 20% over budget
@@ -766,6 +769,15 @@ class ItineraryGenerator(
         }
         if (activityTypes.contains("sports")) {
             candidateActivities.addAll(placesRepository.searchSports())
+        }
+        if (activityTypes.contains("zoos")) {
+            candidateActivities.addAll(placesRepository.searchZoos())
+        }
+        if (activityTypes.contains("cinema")) {
+            candidateActivities.addAll(placesRepository.searchCinema())
+        }
+        if (activityTypes.contains("attractions")) {
+            candidateActivities.addAll(placesRepository.searchAttractions())
         }
         
         Log.d("ItineraryGenerator", "Loaded ${candidateActivities.size} candidate activities for types: $activityTypes")
@@ -1484,6 +1496,9 @@ class ItineraryGenerator(
             PlaceType.CLASS -> CLASS_DURATION_MINUTES
             PlaceType.MARKET -> MARKET_DURATION_MINUTES
             PlaceType.SPORTS -> SPORTS_DURATION_MINUTES
+            PlaceType.ZOO -> ZOO_DURATION_MINUTES
+            PlaceType.CINEMA -> CINEMA_DURATION_MINUTES
+            PlaceType.ATTRACTION -> ATTRACTION_DURATION_MINUTES
         }
     }
     

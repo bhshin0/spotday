@@ -19,7 +19,10 @@ enum class PlaceType {
     BREWERY,        // Breweries, wineries, distilleries
     CLASS,          // Cooking, pottery, art workshops
     MARKET,         // Farmers markets, flea markets
-    SPORTS          // Golf, climbing gyms, batting cages
+    SPORTS,         // Golf, climbing gyms, batting cages
+    ZOO,            // Zoos, aquariums
+    CINEMA,         // Movie theaters
+    ATTRACTION      // Tourist attractions, landmarks
 }
 
 enum class EventType {

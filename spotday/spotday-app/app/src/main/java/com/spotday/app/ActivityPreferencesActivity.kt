@@ -69,7 +69,10 @@ private val activityOptions = listOf(
     "breweries" to "Breweries",
     "classes" to "Classes",
     "markets" to "Markets",
-    "sports" to "Sports"
+    "sports" to "Sports",
+    "zoos" to "Zoos",
+    "cinema" to "Movies",
+    "attractions" to "Sights"
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

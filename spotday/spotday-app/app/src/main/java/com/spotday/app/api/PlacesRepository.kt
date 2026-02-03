@@ -198,6 +198,33 @@ class PlacesRepository(private val context: Context) {
                 saturday = DayHours("09:00", "18:00"),
                 sunday = null
             )
+            PlaceType.ZOO -> WeeklyHours(
+                monday = DayHours("09:00", "17:00"),
+                tuesday = DayHours("09:00", "17:00"),
+                wednesday = DayHours("09:00", "17:00"),
+                thursday = DayHours("09:00", "17:00"),
+                friday = DayHours("09:00", "17:00"),
+                saturday = DayHours("09:00", "18:00"),
+                sunday = DayHours("09:00", "18:00")
+            )
+            PlaceType.CINEMA -> WeeklyHours(
+                monday = DayHours("11:00", "23:00"),
+                tuesday = DayHours("11:00", "23:00"),
+                wednesday = DayHours("11:00", "23:00"),
+                thursday = DayHours("11:00", "23:00"),
+                friday = DayHours("11:00", "00:00"),
+                saturday = DayHours("10:00", "00:00"),
+                sunday = DayHours("10:00", "23:00")
+            )
+            PlaceType.ATTRACTION -> WeeklyHours(
+                monday = DayHours("08:00", "20:00"),
+                tuesday = DayHours("08:00", "20:00"),
+                wednesday = DayHours("08:00", "20:00"),
+                thursday = DayHours("08:00", "20:00"),
+                friday = DayHours("08:00", "20:00"),
+                saturday = DayHours("08:00", "20:00"),
+                sunday = DayHours("08:00", "20:00")
+            )
             else -> WeeklyHours(
                 monday = DayHours("09:00", "18:00"),
                 tuesday = DayHours("09:00", "18:00"),
@@ -227,6 +254,9 @@ class PlacesRepository(private val context: Context) {
             "CLASS" -> PlaceType.CLASS
             "MARKET" -> PlaceType.MARKET
             "SPORTS" -> PlaceType.SPORTS
+            "ZOO" -> PlaceType.ZOO
+            "CINEMA" -> PlaceType.CINEMA
+            "ATTRACTION" -> PlaceType.ATTRACTION
             else -> PlaceType.MUSEUM // Default fallback
         }
         
@@ -368,6 +398,9 @@ class PlacesRepository(private val context: Context) {
             PlaceType.CLASS -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
             PlaceType.MARKET -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
             PlaceType.SPORTS -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
+            PlaceType.ZOO -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
+            PlaceType.CINEMA -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.ATTRACTION -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
         }
     }
     
@@ -1626,6 +1659,71 @@ class PlacesRepository(private val context: Context) {
             AppPlace("golden_gate_tennis", "Golden Gate Park Tennis", PlaceType.SPORTS, 37.7700, -122.4680, 4.5f, true, 1, 20),
             // Batting Cages
             AppPlace("south_sf_batting", "South SF Batting Range", PlaceType.SPORTS, 37.6410, -122.4100, 4.3f, true, 1, 20)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchZoos(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for zoos (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.ZOO)
+            Log.d("PlacesRepository", "Found ${places.size} zoos from remote")
+            return places
+        }
+
+        return getMockZoos()
+    }
+
+    private fun getMockZoos(): List<AppPlace> {
+        return listOf<AppPlace>(
+            AppPlace("sf_zoo", "San Francisco Zoo", PlaceType.ZOO, 37.7325, -122.5030, 4.4f, true, 2, 25),
+            AppPlace("california_academy", "California Academy of Sciences", PlaceType.ZOO, 37.7699, -122.4661, 4.7f, true, 3, 40),
+            AppPlace("monterey_aquarium", "Monterey Bay Aquarium", PlaceType.ZOO, 36.6181, -121.9018, 4.8f, true, 3, 55)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchCinema(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for cinema (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.CINEMA)
+            Log.d("PlacesRepository", "Found ${places.size} cinemas from remote")
+            return places
+        }
+
+        return getMockCinema()
+    }
+
+    private fun getMockCinema(): List<AppPlace> {
+        return listOf<AppPlace>(
+            AppPlace("amc_metreon", "AMC Metreon 16", PlaceType.CINEMA, 37.7851, -122.4033, 4.2f, true, 2, 18),
+            AppPlace("alamo_drafthouse", "Alamo Drafthouse New Mission", PlaceType.CINEMA, 37.7588, -122.4191, 4.6f, true, 2, 20),
+            AppPlace("roxie_theater", "Roxie Theater", PlaceType.CINEMA, 37.7612, -122.4177, 4.5f, true, 1, 12),
+            AppPlace("castro_theatre", "Castro Theatre", PlaceType.CINEMA, 37.7621, -122.4350, 4.7f, true, 1, 15),
+            AppPlace("balboa_theater", "Balboa Theatre", PlaceType.CINEMA, 37.7760, -122.4642, 4.5f, true, 1, 12)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchAttractions(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for attractions (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.ATTRACTION)
+            Log.d("PlacesRepository", "Found ${places.size} attractions from remote")
+            return places
+        }
+
+        return getMockAttractions()
+    }
+
+    private fun getMockAttractions(): List<AppPlace> {
+        return listOf<AppPlace>(
+            AppPlace("golden_gate_viewpoint", "Golden Gate Bridge Vista Point", PlaceType.ATTRACTION, 37.8324, -122.4795, 4.9f, true, 1, 0),
+            AppPlace("lombard_street", "Lombard Street", PlaceType.ATTRACTION, 37.8021, -122.4187, 4.5f, true, 1, 0),
+            AppPlace("coit_tower", "Coit Tower", PlaceType.ATTRACTION, 37.8024, -122.4058, 4.6f, true, 1, 10),
+            AppPlace("palace_fine_arts", "Palace of Fine Arts", PlaceType.ATTRACTION, 37.8029, -122.4484, 4.7f, true, 1, 0),
+            AppPlace("painted_ladies", "Painted Ladies", PlaceType.ATTRACTION, 37.7763, -122.4328, 4.6f, true, 1, 0),
+            AppPlace("twin_peaks", "Twin Peaks", PlaceType.ATTRACTION, 37.7544, -122.4477, 4.7f, true, 1, 0)
         ).applyTypeDefaults()
     }
 }

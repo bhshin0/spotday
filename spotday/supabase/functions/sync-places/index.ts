@@ -56,8 +56,9 @@ const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "frid
 
 // Google Place types to fetch
 const PLACE_TYPES = [
-  "restaurant", "cafe", "bar", "night_club", 
-  "museum", "park", "spa", "shopping_mall"
+  "restaurant", "cafe", "bar", "night_club",
+  "museum", "park", "spa", "shopping_mall",
+  "zoo", "aquarium", "movie_theater", "tourist_attraction"
 ];
 
 // Fast food chains to exclude
@@ -94,7 +95,10 @@ function determinePlaceType(types: string[]): string {
   if (types.includes("park")) return "PARK";
   if (types.includes("spa") || types.includes("beauty_salon")) return "WELLNESS";
   if (types.includes("shopping_mall") || types.includes("store")) return "SHOPPING";
-  if (types.includes("movie_theater") || types.includes("amusement_park")) return "ENTERTAINMENT";
+  if (types.includes("zoo") || types.includes("aquarium")) return "ZOO";
+  if (types.includes("movie_theater")) return "CINEMA";
+  if (types.includes("tourist_attraction")) return "ATTRACTION";
+  if (types.includes("amusement_park")) return "ENTERTAINMENT";
   return "OTHER";
 }
 
@@ -154,8 +158,35 @@ function getDefaultHours(placeType: string): WeeklyHours {
       saturday: { open: "10:00", close: "21:00" },
       sunday: { open: "11:00", close: "18:00" },
     },
+    ZOO: {
+      monday: { open: "09:00", close: "17:00" },
+      tuesday: { open: "09:00", close: "17:00" },
+      wednesday: { open: "09:00", close: "17:00" },
+      thursday: { open: "09:00", close: "17:00" },
+      friday: { open: "09:00", close: "17:00" },
+      saturday: { open: "09:00", close: "18:00" },
+      sunday: { open: "09:00", close: "18:00" },
+    },
+    CINEMA: {
+      monday: { open: "11:00", close: "23:00" },
+      tuesday: { open: "11:00", close: "23:00" },
+      wednesday: { open: "11:00", close: "23:00" },
+      thursday: { open: "11:00", close: "23:00" },
+      friday: { open: "11:00", close: "00:00" },
+      saturday: { open: "10:00", close: "00:00" },
+      sunday: { open: "10:00", close: "23:00" },
+    },
+    ATTRACTION: {
+      monday: { open: "08:00", close: "20:00" },
+      tuesday: { open: "08:00", close: "20:00" },
+      wednesday: { open: "08:00", close: "20:00" },
+      thursday: { open: "08:00", close: "20:00" },
+      friday: { open: "08:00", close: "20:00" },
+      saturday: { open: "08:00", close: "20:00" },
+      sunday: { open: "08:00", close: "20:00" },
+    },
   };
-  
+
   return defaults[placeType] || defaults.RESTAURANT;
 }
 
