@@ -32,10 +32,13 @@ import com.spotday.app.util.PreferencesManager
 class BarCrawlSelectionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         val totalBudget = intent.getIntExtra("totalBudget", 150)
         val cityId = intent.getStringExtra("cityId") ?: "san_francisco"
-        
+        val isSpontaneousMode = intent.getBooleanExtra("isSpontaneousMode", false)
+        val startLatitude = if (intent.hasExtra("startLatitude")) intent.getDoubleExtra("startLatitude", 0.0) else null
+        val startLongitude = if (intent.hasExtra("startLongitude")) intent.getDoubleExtra("startLongitude", 0.0) else null
+
         setContent {
             BarCrawlTheme {
                 Surface(
@@ -44,7 +47,10 @@ class BarCrawlSelectionActivity : ComponentActivity() {
                 ) {
                     BarCrawlSelectionScreen(
                         totalBudget = totalBudget,
-                        cityId = cityId
+                        cityId = cityId,
+                        isSpontaneousMode = isSpontaneousMode,
+                        startLatitude = startLatitude,
+                        startLongitude = startLongitude
                     )
                 }
             }
@@ -55,7 +61,10 @@ class BarCrawlSelectionActivity : ComponentActivity() {
 @Composable
 fun BarCrawlSelectionScreen(
     totalBudget: Int,
-    cityId: String
+    cityId: String,
+    isSpontaneousMode: Boolean = false,
+    startLatitude: Double? = null,
+    startLongitude: Double? = null
 ) {
     val context = LocalContext.current
     val preferencesManager = remember { PreferencesManager(context) }
@@ -253,7 +262,7 @@ fun BarCrawlSelectionScreen(
                             putExtra("endHour", 2)     // 2 AM (next day)
                             putExtra("totalBudget", totalBudget)
                             putExtra("isHungryNow", false)
-                            putExtra("isSpontaneousMode", false)
+                            putExtra("isSpontaneousMode", isSpontaneousMode)
                             putExtra("activityTypes", arrayOf<String>())  // No activities
                             putExtra("foodTypes", arrayOf<String>())      // No food
                             putExtra("serviceStyles", arrayOf<String>())
@@ -262,6 +271,11 @@ fun BarCrawlSelectionScreen(
                             putExtra("explorationMode", "CITY_WIDE")
                             putExtra("cityId", cityId)
                             putExtra("isBarCrawlMode", true)  // Flag for special handling
+                            // Pass GPS coordinates if available
+                            if (startLatitude != null && startLongitude != null) {
+                                putExtra("startLatitude", startLatitude)
+                                putExtra("startLongitude", startLongitude)
+                            }
                         }
                         context.startActivity(intent)
                         (context as? ComponentActivity)?.finish()

@@ -28,6 +28,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_DURATION_HOURS = "duration_hours"
         private const val KEY_BUDGET = "budget"
         private const val KEY_IS_HUNGRY_NOW = "is_hungry_now"
+        private const val KEY_USE_MY_LOCATION = "use_my_location"
         
         // Default city ID
         const val DEFAULT_CITY_ID = "san_francisco"
@@ -139,11 +140,20 @@ class PreferencesManager(context: Context) {
     fun saveSelectedCity(cityId: String) {
         prefs.edit().putString(KEY_SELECTED_CITY, cityId).apply()
     }
-    
+
     fun getSelectedCity(): String {
         return prefs.getString(KEY_SELECTED_CITY, DEFAULT_CITY_ID) ?: DEFAULT_CITY_ID
     }
-    
+
+    // Use My Location preference
+    fun saveUseMyLocation(useLocation: Boolean) {
+        prefs.edit().putBoolean(KEY_USE_MY_LOCATION, useLocation).apply()
+    }
+
+    fun getUseMyLocation(): Boolean {
+        return prefs.getBoolean(KEY_USE_MY_LOCATION, false)
+    }
+
     // Clear all preferences
     fun clearAll() {
         prefs.edit().clear().apply()
