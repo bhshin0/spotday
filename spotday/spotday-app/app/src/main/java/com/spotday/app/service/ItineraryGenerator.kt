@@ -45,7 +45,9 @@ class ItineraryGenerator(
         private const val ENTERTAINMENT_DURATION_MINUTES = 120 // 2 hours (show/performance)
         private const val GAMES_DURATION_MINUTES = 90 // 1.5 hours (escape room, bowling)
         private const val OUTDOOR_DURATION_MINUTES = 120 // 2 hours (kayaking, biking)
-        private const val WELLNESS_DURATION_MINUTES = 90 // 1.5 hours (spa, yoga)
+        private const val MASSAGE_DURATION_MINUTES = 90 // 1.5 hours
+        private const val SAUNA_DURATION_MINUTES = 120 // 2 hours
+        private const val BEACH_DURATION_MINUTES = 120 // 2 hours
         private const val BREWERY_DURATION_MINUTES = 75 // 1.25 hours (tasting)
         private const val CLASS_DURATION_MINUTES = 120 // 2 hours (cooking, pottery)
         private const val MARKET_DURATION_MINUTES = 60 // 1 hour (browsing)
@@ -755,8 +757,14 @@ class ItineraryGenerator(
         if (activityTypes.contains("outdoor")) {
             candidateActivities.addAll(placesRepository.searchOutdoor())
         }
-        if (activityTypes.contains("wellness")) {
-            candidateActivities.addAll(placesRepository.searchWellness())
+        if (activityTypes.contains("massage")) {
+            candidateActivities.addAll(placesRepository.searchMassage())
+        }
+        if (activityTypes.contains("sauna")) {
+            candidateActivities.addAll(placesRepository.searchSauna())
+        }
+        if (activityTypes.contains("beach")) {
+            candidateActivities.addAll(placesRepository.searchBeach())
         }
         if (activityTypes.contains("breweries")) {
             candidateActivities.addAll(placesRepository.searchBreweries())
@@ -1491,7 +1499,9 @@ class ItineraryGenerator(
             PlaceType.ENTERTAINMENT -> ENTERTAINMENT_DURATION_MINUTES
             PlaceType.GAMES -> GAMES_DURATION_MINUTES
             PlaceType.OUTDOOR -> OUTDOOR_DURATION_MINUTES
-            PlaceType.WELLNESS -> WELLNESS_DURATION_MINUTES
+            PlaceType.MASSAGE -> MASSAGE_DURATION_MINUTES
+            PlaceType.SAUNA -> SAUNA_DURATION_MINUTES
+            PlaceType.BEACH -> BEACH_DURATION_MINUTES
             PlaceType.BREWERY -> BREWERY_DURATION_MINUTES
             PlaceType.CLASS -> CLASS_DURATION_MINUTES
             PlaceType.MARKET -> MARKET_DURATION_MINUTES

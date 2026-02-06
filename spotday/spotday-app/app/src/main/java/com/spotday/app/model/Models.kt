@@ -15,7 +15,9 @@ enum class PlaceType {
     ENTERTAINMENT,  // Comedy clubs, theaters, live shows
     GAMES,          // Escape rooms, bowling, arcades
     OUTDOOR,        // Kayaking, hiking, bike rentals
-    WELLNESS,       // Spas, yoga, bathhouses
+    MASSAGE,        // Massage studios, Thai massage, bodywork
+    SAUNA,          // Day spas, Korean spas, bathhouses, float, cryo
+    BEACH,          // Beaches, coastal areas
     BREWERY,        // Breweries, wineries, distilleries
     CLASS,          // Cooking, pottery, art workshops
     MARKET,         // Farmers markets, flea markets
@@ -260,5 +262,16 @@ data class UserPreferences(
     val selectedEventIds: List<String> = emptyList(),
     val serviceStyles: List<ServiceStyle> = emptyList(), // Empty = all styles allowed
     val explorationMode: ExplorationMode = ExplorationMode.ONE_AREA // Default to walkable
+)
+
+/**
+ * Popularity info for a category (activity type, cuisine, or nightlife type).
+ * Used to show "Popular in [City]" badges on selection screens.
+ */
+data class PopularityInfo(
+    val count: Int,          // Number of venues in this category
+    val avgRating: Float,    // Average rating across venues
+    val score: Float,        // Calculated popularity score
+    val isPopular: Boolean   // True if this category is in the top N for its type
 )
 

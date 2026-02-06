@@ -189,14 +189,32 @@ class PlacesRepository(private val context: Context) {
                 saturday = DayHours("06:00", "22:00"),
                 sunday = DayHours("06:00", "22:00")
             )
-            PlaceType.WELLNESS -> WeeklyHours(
-                monday = DayHours("09:00", "21:00"),
-                tuesday = DayHours("09:00", "21:00"),
-                wednesday = DayHours("09:00", "21:00"),
-                thursday = DayHours("09:00", "21:00"),
-                friday = DayHours("09:00", "21:00"),
-                saturday = DayHours("09:00", "18:00"),
-                sunday = null
+            PlaceType.MASSAGE -> WeeklyHours(
+                monday = DayHours("10:00", "21:00"),
+                tuesday = DayHours("10:00", "21:00"),
+                wednesday = DayHours("10:00", "21:00"),
+                thursday = DayHours("10:00", "21:00"),
+                friday = DayHours("10:00", "21:00"),
+                saturday = DayHours("10:00", "20:00"),
+                sunday = DayHours("11:00", "19:00")
+            )
+            PlaceType.SAUNA -> WeeklyHours(
+                monday = DayHours("09:00", "22:00"),
+                tuesday = DayHours("09:00", "22:00"),
+                wednesday = DayHours("09:00", "22:00"),
+                thursday = DayHours("09:00", "22:00"),
+                friday = DayHours("09:00", "23:00"),
+                saturday = DayHours("09:00", "23:00"),
+                sunday = DayHours("09:00", "21:00")
+            )
+            PlaceType.BEACH -> WeeklyHours(
+                monday = DayHours("06:00", "20:00"),
+                tuesday = DayHours("06:00", "20:00"),
+                wednesday = DayHours("06:00", "20:00"),
+                thursday = DayHours("06:00", "20:00"),
+                friday = DayHours("06:00", "20:00"),
+                saturday = DayHours("06:00", "20:00"),
+                sunday = DayHours("06:00", "20:00")
             )
             PlaceType.ZOO -> WeeklyHours(
                 monday = DayHours("09:00", "17:00"),
@@ -225,6 +243,42 @@ class PlacesRepository(private val context: Context) {
                 saturday = DayHours("08:00", "20:00"),
                 sunday = DayHours("08:00", "20:00")
             )
+            PlaceType.HISTORIC_SITE -> WeeklyHours(
+                monday = DayHours("09:00", "17:00"),
+                tuesday = DayHours("09:00", "17:00"),
+                wednesday = DayHours("09:00", "17:00"),
+                thursday = DayHours("09:00", "17:00"),
+                friday = DayHours("09:00", "17:00"),
+                saturday = DayHours("10:00", "18:00"),
+                sunday = DayHours("10:00", "18:00")
+            )
+            PlaceType.ENTERTAINMENT -> WeeklyHours(
+                monday = DayHours("11:00", "23:00"),
+                tuesday = DayHours("11:00", "23:00"),
+                wednesday = DayHours("11:00", "23:00"),
+                thursday = DayHours("11:00", "23:00"),
+                friday = DayHours("11:00", "00:00"),
+                saturday = DayHours("10:00", "00:00"),
+                sunday = DayHours("10:00", "23:00")
+            )
+            PlaceType.SPORTS -> WeeklyHours(
+                monday = DayHours("05:00", "23:00"),
+                tuesday = DayHours("05:00", "23:00"),
+                wednesday = DayHours("05:00", "23:00"),
+                thursday = DayHours("05:00", "23:00"),
+                friday = DayHours("05:00", "23:00"),
+                saturday = DayHours("06:00", "22:00"),
+                sunday = DayHours("06:00", "22:00")
+            )
+            PlaceType.GAMES -> WeeklyHours(
+                monday = DayHours("12:00", "23:00"),
+                tuesday = DayHours("12:00", "23:00"),
+                wednesday = DayHours("12:00", "23:00"),
+                thursday = DayHours("12:00", "23:00"),
+                friday = DayHours("12:00", "00:00"),
+                saturday = DayHours("10:00", "00:00"),
+                sunday = DayHours("10:00", "22:00")
+            )
             else -> WeeklyHours(
                 monday = DayHours("09:00", "18:00"),
                 tuesday = DayHours("09:00", "18:00"),
@@ -244,7 +298,9 @@ class PlacesRepository(private val context: Context) {
             "PARK" -> PlaceType.PARK
             "NIGHTLIFE" -> PlaceType.NIGHTLIFE
             "SHOPPING" -> PlaceType.SHOPPING
-            "WELLNESS" -> PlaceType.WELLNESS
+            "MASSAGE" -> PlaceType.MASSAGE
+            "SAUNA" -> PlaceType.SAUNA
+            "BEACH" -> PlaceType.BEACH
             "ENTERTAINMENT" -> PlaceType.ENTERTAINMENT
             "HISTORIC_SITE" -> PlaceType.HISTORIC_SITE
             "WATERFRONT" -> PlaceType.WATERFRONT
@@ -322,7 +378,13 @@ class PlacesRepository(private val context: Context) {
                 3 -> 50
                 else -> 25
             }
-            PlaceType.WELLNESS -> when (level) {
+            PlaceType.MASSAGE -> when (level) {
+                1 -> 40
+                2 -> 80
+                3 -> 120
+                else -> 60
+            }
+            PlaceType.SAUNA -> when (level) {
                 1 -> 30
                 2 -> 60
                 3 -> 100
@@ -393,7 +455,9 @@ class PlacesRepository(private val context: Context) {
             PlaceType.ENTERTAINMENT -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
             PlaceType.GAMES -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
             PlaceType.OUTDOOR -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
-            PlaceType.WELLNESS -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.MASSAGE -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.SAUNA -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
+            PlaceType.BEACH -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
             PlaceType.BREWERY -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
             PlaceType.CLASS -> this.copy(isOutdoor = false, weeklyHours = defaultHours)
             PlaceType.MARKET -> this.copy(isOutdoor = true, weeklyHours = defaultHours)
@@ -1511,33 +1575,64 @@ class PlacesRepository(private val context: Context) {
         ).applyTypeDefaults()
     }
 
-    suspend fun searchWellness(): List<AppPlace> {
-        Log.d("PlacesRepository", "Searching for wellness (city=$currentCityId, remote=$USE_REMOTE_DATA)")
-        
+    suspend fun searchMassage(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for massage (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+
         if (USE_REMOTE_DATA) {
-            val places = getPlacesByType(PlaceType.WELLNESS)
-            Log.d("PlacesRepository", "Found ${places.size} wellness venues from remote")
+            val places = getPlacesByType(PlaceType.MASSAGE)
+            Log.d("PlacesRepository", "Found ${places.size} massage venues from remote")
             return places
         }
-        
-        return getMockWellness()
+
+        return getMockMassage()
     }
-    
-    private fun getMockWellness(): List<AppPlace> {
+
+    private fun getMockMassage(): List<AppPlace> {
         return listOf<AppPlace>(
-            // Spas / Bathhouses
-            AppPlace("kabuki_springs", "Kabuki Springs & Spa", PlaceType.WELLNESS, 37.7851, -122.4307, 4.7f, true, 2, 45),
-            AppPlace("archimedes_banya", "Archimedes Banya", PlaceType.WELLNESS, 37.7785, -122.4000, 4.6f, true, 2, 50),
-            AppPlace("imperial_day_spa", "Imperial Day Spa", PlaceType.WELLNESS, 37.7856, -122.4083, 4.4f, true, 2, 60),
-            AppPlace("nob_hill_spa", "Nob Hill Spa", PlaceType.WELLNESS, 37.7918, -122.4102, 4.5f, true, 3, 120),
-            AppPlace("remede_spa", "Remede Spa", PlaceType.WELLNESS, 37.7863, -122.4092, 4.6f, true, 3, 150),
-            // Yoga Studios
-            AppPlace("yoga_tree", "Yoga Tree Castro", PlaceType.WELLNESS, 37.7612, -122.4348, 4.5f, true, 1, 25),
-            AppPlace("yoga_flow", "Yoga Flow SF", PlaceType.WELLNESS, 37.7600, -122.4200, 4.4f, true, 1, 25),
-            AppPlace("lovingkindness", "LovingKindness Yoga", PlaceType.WELLNESS, 37.7550, -122.4170, 4.5f, true, 1, 22),
-            // Float / Meditation
-            AppPlace("reboot_float", "Reboot Float Spa", PlaceType.WELLNESS, 37.7925, -122.4047, 4.6f, true, 2, 80),
-            AppPlace("float_matrix", "Float Matrix", PlaceType.WELLNESS, 37.7700, -122.4340, 4.4f, true, 2, 70)
+            AppPlace("kabuki_massage", "Kabuki Springs Massage", PlaceType.MASSAGE, 37.7851, -122.4307, 4.7f, true, 2, 80),
+            AppPlace("sf_bodywork", "SF Bodywork Center", PlaceType.MASSAGE, 37.7785, -122.4000, 4.5f, true, 2, 70),
+            AppPlace("thai_massage_sf", "Thai Massage SF", PlaceType.MASSAGE, 37.7856, -122.4083, 4.4f, true, 1, 50)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchSauna(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for sauna (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.SAUNA)
+            Log.d("PlacesRepository", "Found ${places.size} sauna/spa venues from remote")
+            return places
+        }
+
+        return getMockSauna()
+    }
+
+    private fun getMockSauna(): List<AppPlace> {
+        return listOf<AppPlace>(
+            AppPlace("archimedes_banya", "Archimedes Banya", PlaceType.SAUNA, 37.7785, -122.4000, 4.6f, true, 2, 50),
+            AppPlace("imperial_day_spa", "Imperial Day Spa", PlaceType.SAUNA, 37.7856, -122.4083, 4.4f, true, 2, 60),
+            AppPlace("nob_hill_spa", "Nob Hill Spa", PlaceType.SAUNA, 37.7918, -122.4102, 4.5f, true, 3, 120),
+            AppPlace("reboot_float", "Reboot Float Spa", PlaceType.SAUNA, 37.7925, -122.4047, 4.6f, true, 2, 80)
+        ).applyTypeDefaults()
+    }
+
+    suspend fun searchBeach(): List<AppPlace> {
+        Log.d("PlacesRepository", "Searching for beaches (city=$currentCityId, remote=$USE_REMOTE_DATA)")
+
+        if (USE_REMOTE_DATA) {
+            val places = getPlacesByType(PlaceType.BEACH)
+            Log.d("PlacesRepository", "Found ${places.size} beaches from remote")
+            return places
+        }
+
+        return getMockBeach()
+    }
+
+    private fun getMockBeach(): List<AppPlace> {
+        return listOf<AppPlace>(
+            AppPlace("ocean_beach", "Ocean Beach", PlaceType.BEACH, 37.7596, -122.5107, 4.6f, true, 0, 0),
+            AppPlace("baker_beach", "Baker Beach", PlaceType.BEACH, 37.7936, -122.4836, 4.7f, true, 0, 0),
+            AppPlace("china_beach", "China Beach", PlaceType.BEACH, 37.7875, -122.4913, 4.5f, true, 0, 0)
         ).applyTypeDefaults()
     }
 
@@ -1725,5 +1820,193 @@ class PlacesRepository(private val context: Context) {
             AppPlace("painted_ladies", "Painted Ladies", PlaceType.ATTRACTION, 37.7763, -122.4328, 4.6f, true, 1, 0),
             AppPlace("twin_peaks", "Twin Peaks", PlaceType.ATTRACTION, 37.7544, -122.4477, 4.7f, true, 1, 0)
         ).applyTypeDefaults()
+    }
+
+    // ============================================================================
+    // Popularity Calculation Methods
+    // Used to show "Popular in [City]" badges on selection screens
+    // ============================================================================
+
+    /**
+     * Calculate popularity metrics for each activity type in the current city.
+     * Popularity score = (normalizedCount * 0.4) + (avgRating/5 * 0.6)
+     * Top 4 activity types are marked as "popular".
+     */
+    suspend fun getActivityPopularity(): Map<PlaceType, com.spotday.app.model.PopularityInfo> {
+        val allPlaces = loadRemotePlaces()
+
+        // Activity types we care about (excluding RESTAURANT and NIGHTLIFE)
+        val activityTypes = listOf(
+            PlaceType.MUSEUM, PlaceType.PARK, PlaceType.WATERFRONT,
+            PlaceType.HISTORIC_SITE, PlaceType.SHOPPING, PlaceType.ENTERTAINMENT,
+            PlaceType.GAMES, PlaceType.OUTDOOR, PlaceType.MASSAGE, PlaceType.SAUNA,
+            PlaceType.BEACH, PlaceType.BREWERY, PlaceType.CLASS, PlaceType.MARKET,
+            PlaceType.SPORTS, PlaceType.ZOO, PlaceType.CINEMA, PlaceType.ATTRACTION
+        )
+
+        // Group places by type and calculate metrics
+        val placesByType = allPlaces.filter { it.type in activityTypes }.groupBy { it.type }
+
+        // Find max count for normalization
+        val maxCount = placesByType.values.maxOfOrNull { it.size } ?: 1
+
+        // Calculate scores
+        val scores = activityTypes.associateWith { type ->
+            val places = placesByType[type] ?: emptyList()
+            val count = places.size
+            val avgRating = if (places.isNotEmpty()) places.map { it.rating }.average().toFloat() else 0f
+
+            // Normalize count to 0-1 range, then apply formula
+            val normalizedCount = count.toFloat() / maxCount
+            val score = (normalizedCount * 0.4f) + ((avgRating / 5f) * 0.6f)
+
+            Triple(count, avgRating, score)
+        }
+
+        // Find top 4 by score
+        val topTypes = scores.entries
+            .sortedByDescending { it.value.third }
+            .take(4)
+            .map { it.key }
+            .toSet()
+
+        // Build result map
+        return scores.mapValues { (type, data) ->
+            com.spotday.app.model.PopularityInfo(
+                count = data.first,
+                avgRating = data.second,
+                score = data.third,
+                isPopular = type in topTypes
+            )
+        }
+    }
+
+    /**
+     * Calculate popularity metrics for cuisines based on restaurant data.
+     * Since remote data doesn't have cuisine tags, we use mock data patterns
+     * to estimate cuisine distribution for now.
+     * Top 3 cuisines are marked as "popular".
+     */
+    suspend fun getCuisinePopularity(): Map<String, com.spotday.app.model.PopularityInfo> {
+        val allRestaurants = loadRemotePlaces().filter { it.type == PlaceType.RESTAURANT }
+        val totalCount = allRestaurants.size
+        val avgRating = if (allRestaurants.isNotEmpty())
+            allRestaurants.map { it.rating }.average().toFloat() else 0f
+
+        // Cuisine options that match the UI
+        val cuisines = listOf("italian", "mexican", "american", "asian", "seafood", "vegetarian")
+
+        // Estimate distribution based on typical city patterns
+        // In a real implementation, restaurants would have cuisine tags
+        val distribution = mapOf(
+            "mexican" to 0.22f,
+            "american" to 0.20f,
+            "asian" to 0.20f,
+            "italian" to 0.18f,
+            "seafood" to 0.12f,
+            "vegetarian" to 0.08f
+        )
+
+        // Calculate scores for each cuisine
+        val scores = cuisines.associateWith { cuisine ->
+            val fraction = distribution[cuisine] ?: 0.1f
+            val estimatedCount = (totalCount * fraction).toInt().coerceAtLeast(1)
+            // Use slight rating variation to make it realistic
+            val cuisineRating = avgRating + when (cuisine) {
+                "italian", "mexican" -> 0.1f
+                "asian" -> 0.05f
+                else -> 0f
+            }
+
+            val normalizedCount = fraction  // Already 0-1
+            val score = (normalizedCount * 0.4f) + ((cuisineRating / 5f) * 0.6f)
+
+            Triple(estimatedCount, cuisineRating.coerceIn(0f, 5f), score)
+        }
+
+        // Find top 3 by score
+        val topCuisines = scores.entries
+            .sortedByDescending { it.value.third }
+            .take(3)
+            .map { it.key }
+            .toSet()
+
+        return scores.mapValues { (cuisine, data) ->
+            com.spotday.app.model.PopularityInfo(
+                count = data.first,
+                avgRating = data.second,
+                score = data.third,
+                isPopular = cuisine in topCuisines
+            )
+        }
+    }
+
+    /**
+     * Calculate popularity metrics for nightlife types.
+     * Uses the nightlifeCategory field to count venues by type.
+     * Top 3 nightlife types are marked as "popular".
+     */
+    suspend fun getNightlifePopularity(): Map<String, com.spotday.app.model.PopularityInfo> {
+        val allNightlife = loadRemotePlaces().filter { it.type == PlaceType.NIGHTLIFE }
+
+        // Map database categories back to user-facing types
+        val categoryToType = mapOf(
+            "bar" to "bars",
+            "cocktail_bar" to "cocktail_bars",
+            "club" to "clubs",
+            "night_club" to "clubs",
+            "live_music" to "live_music",
+            "dive_bar" to "dive_bars",
+            "rooftop_bar" to "rooftop_bars"
+        )
+
+        // Nightlife types that match the UI
+        val nightlifeTypes = listOf("bars", "cocktail_bars", "clubs", "live_music", "dive_bars", "rooftop_bars")
+
+        // Group by user-facing type
+        val byType = nightlifeTypes.associateWith { type -> mutableListOf<AppPlace>() }
+        allNightlife.forEach { place ->
+            val category = place.nightlifeCategory
+            if (category != null) {
+                val type = categoryToType[category]
+                if (type != null) {
+                    (byType[type] as MutableList).add(place)
+                }
+            } else {
+                // No category = count as generic bar
+                (byType["bars"] as MutableList).add(place)
+            }
+        }
+
+        // Find max count for normalization
+        val maxCount = byType.values.maxOfOrNull { it.size }?.coerceAtLeast(1) ?: 1
+
+        // Calculate scores
+        val scores = nightlifeTypes.associateWith { type ->
+            val places = byType[type] ?: emptyList()
+            val count = places.size
+            val avgRating = if (places.isNotEmpty()) places.map { it.rating }.average().toFloat() else 4.0f
+
+            val normalizedCount = count.toFloat() / maxCount
+            val score = (normalizedCount * 0.4f) + ((avgRating / 5f) * 0.6f)
+
+            Triple(count, avgRating, score)
+        }
+
+        // Find top 3 by score
+        val topTypes = scores.entries
+            .sortedByDescending { it.value.third }
+            .take(3)
+            .map { it.key }
+            .toSet()
+
+        return scores.mapValues { (type, data) ->
+            com.spotday.app.model.PopularityInfo(
+                count = data.first,
+                avgRating = data.second,
+                score = data.third,
+                isPopular = type in topTypes
+            )
+        }
     }
 }

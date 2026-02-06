@@ -15,8 +15,8 @@ const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const NEARBY_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
-const PLACE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json";
+const NEARBY_SEARCH_URL = "https://places.googleapis.com/v1/places:searchNearby";
+const PLACE_DETAILS_URL = "https://places.googleapis.com/v1/places";
 
 // ============================================
 // TYPES
@@ -56,9 +56,22 @@ const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "frid
 
 // Google Place types to fetch
 const PLACE_TYPES = [
+  // Food & Drink
   "restaurant", "cafe", "bar", "night_club",
-  "museum", "park", "spa", "shopping_mall",
-  "zoo", "aquarium", "movie_theater", "tourist_attraction"
+  // Culture
+  "museum", "art_gallery",
+  // Nature & Outdoors
+  "park", "garden", "beach", "hiking_area", "campground",
+  // Waterfront
+  "marina",
+  // Entertainment
+  "performing_arts_theater", "concert_hall", "amusement_park",
+  "movie_theater", "karaoke",
+  // Activities
+  "shopping_mall", "zoo", "aquarium", "tourist_attraction",
+  "historical_landmark", "stadium", "bowling_alley", "video_arcade",
+  // Wellness
+  "spa"
 ];
 
 // Fast food chains to exclude
@@ -84,21 +97,72 @@ function isFastFood(name: string): boolean {
   return FAST_FOOD_BLOCKLIST.some(chain => lower.includes(chain));
 }
 
+// Wellness sub-type detection by name keywords
+function getWellnessSubType(name: string): string | null {
+  const lower = name.toLowerCase();
+
+  // Blocklist - not day-trip appropriate
+  const blocklist = [
+    "nail", "laser", "clinic", "surgery", "medical", "aesthet",
+    "threading", "wax", "fitness", "gym", "barber", "hair",
+    "colonic", "acne", "cosmetic", "plastic", "lash", "brow",
+    "salon", "skincare", "skin care", "dermat", "beauty"
+  ];
+  if (blocklist.some(kw => lower.includes(kw))) return null;
+
+  // Massage detection
+  if (lower.includes("massage") || lower.includes("bodywork") ||
+      lower.includes("reflexology")) {
+    return "MASSAGE";
+  }
+
+  // Sauna/Spa detection (includes float, cryo, bathhouse, day spas)
+  if (lower.includes("sauna") || lower.includes("bathhouse") ||
+      lower.includes("bath house") || lower.includes("onsen") ||
+      lower.includes("float") || lower.includes("cryo") ||
+      lower.includes("day spa") || lower.includes("thai spa") ||
+      lower.includes("korean spa")) {
+    return "SAUNA";
+  }
+
+  // Generic "spa" in name - only if it passed the blocklist
+  if (lower.includes("spa")) {
+    return "SAUNA";
+  }
+
+  return null;
+}
+
 function formatTime(time: string): string {
   return time.length === 4 ? `${time.slice(0, 2)}:${time.slice(2)}` : time;
 }
 
 function determinePlaceType(types: string[]): string {
+  // Existing mappings
   if (types.includes("restaurant") || types.includes("food") || types.includes("cafe")) return "RESTAURANT";
   if (types.includes("bar") || types.includes("night_club")) return "NIGHTLIFE";
+  if (types.includes("beach")) return "BEACH";
+  if (types.includes("marina")) return "WATERFRONT";
   if (types.includes("museum") || types.includes("art_gallery")) return "MUSEUM";
-  if (types.includes("park")) return "PARK";
-  if (types.includes("spa") || types.includes("beauty_salon")) return "WELLNESS";
+  if (types.includes("park") || types.includes("garden")) return "PARK";
+  if (types.includes("karaoke")) return "NIGHTLIFE";
+  // Spa handling is done separately in the sync loop via getWellnessSubType()
   if (types.includes("shopping_mall") || types.includes("store")) return "SHOPPING";
   if (types.includes("zoo") || types.includes("aquarium")) return "ZOO";
   if (types.includes("movie_theater")) return "CINEMA";
   if (types.includes("tourist_attraction")) return "ATTRACTION";
   if (types.includes("amusement_park")) return "ENTERTAINMENT";
+
+  // NEW mappings
+  if (types.includes("historical_landmark") || types.includes("monument")) return "HISTORIC_SITE";
+  if (types.includes("performing_arts_theater") || types.includes("concert_hall") ||
+      types.includes("opera_house") || types.includes("comedy_club")) return "ENTERTAINMENT";
+  if (types.includes("hiking_area") || types.includes("campground") ||
+      types.includes("national_park")) return "OUTDOOR";
+  if (types.includes("gym") || types.includes("fitness_center") ||
+      types.includes("stadium") || types.includes("sports_complex")) return "SPORTS";
+  if (types.includes("bowling_alley") || types.includes("video_arcade")) return "GAMES";
+
   return "OTHER";
 }
 
@@ -140,14 +204,50 @@ function getDefaultHours(placeType: string): WeeklyHours {
       saturday: { open: "06:00", close: "22:00" },
       sunday: { open: "06:00", close: "22:00" },
     },
-    WELLNESS: {
-      monday: { open: "09:00", close: "21:00" },
-      tuesday: { open: "09:00", close: "21:00" },
-      wednesday: { open: "09:00", close: "21:00" },
-      thursday: { open: "09:00", close: "21:00" },
-      friday: { open: "09:00", close: "21:00" },
-      saturday: { open: "09:00", close: "18:00" },
-      sunday: null,
+    MASSAGE: {
+      monday: { open: "10:00", close: "21:00" },
+      tuesday: { open: "10:00", close: "21:00" },
+      wednesday: { open: "10:00", close: "21:00" },
+      thursday: { open: "10:00", close: "21:00" },
+      friday: { open: "10:00", close: "21:00" },
+      saturday: { open: "10:00", close: "20:00" },
+      sunday: { open: "11:00", close: "19:00" },
+    },
+    SAUNA: {
+      monday: { open: "09:00", close: "22:00" },
+      tuesday: { open: "09:00", close: "22:00" },
+      wednesday: { open: "09:00", close: "22:00" },
+      thursday: { open: "09:00", close: "22:00" },
+      friday: { open: "09:00", close: "23:00" },
+      saturday: { open: "09:00", close: "23:00" },
+      sunday: { open: "09:00", close: "21:00" },
+    },
+    BEACH: {
+      monday: { open: "06:00", close: "20:00" },
+      tuesday: { open: "06:00", close: "20:00" },
+      wednesday: { open: "06:00", close: "20:00" },
+      thursday: { open: "06:00", close: "20:00" },
+      friday: { open: "06:00", close: "20:00" },
+      saturday: { open: "06:00", close: "20:00" },
+      sunday: { open: "06:00", close: "20:00" },
+    },
+    WATERFRONT: {
+      monday: { open: "08:00", close: "18:00" },
+      tuesday: { open: "08:00", close: "18:00" },
+      wednesday: { open: "08:00", close: "18:00" },
+      thursday: { open: "08:00", close: "18:00" },
+      friday: { open: "08:00", close: "18:00" },
+      saturday: { open: "08:00", close: "18:00" },
+      sunday: { open: "08:00", close: "18:00" },
+    },
+    BREWERY: {
+      monday: { open: "12:00", close: "21:00" },
+      tuesday: { open: "12:00", close: "21:00" },
+      wednesday: { open: "12:00", close: "21:00" },
+      thursday: { open: "12:00", close: "21:00" },
+      friday: { open: "12:00", close: "21:00" },
+      saturday: { open: "12:00", close: "21:00" },
+      sunday: { open: "12:00", close: "21:00" },
     },
     SHOPPING: {
       monday: { open: "10:00", close: "21:00" },
@@ -185,6 +285,51 @@ function getDefaultHours(placeType: string): WeeklyHours {
       saturday: { open: "08:00", close: "20:00" },
       sunday: { open: "08:00", close: "20:00" },
     },
+    HISTORIC_SITE: {
+      monday: { open: "09:00", close: "17:00" },
+      tuesday: { open: "09:00", close: "17:00" },
+      wednesday: { open: "09:00", close: "17:00" },
+      thursday: { open: "09:00", close: "17:00" },
+      friday: { open: "09:00", close: "17:00" },
+      saturday: { open: "10:00", close: "18:00" },
+      sunday: { open: "10:00", close: "18:00" },
+    },
+    ENTERTAINMENT: {
+      monday: { open: "11:00", close: "23:00" },
+      tuesday: { open: "11:00", close: "23:00" },
+      wednesday: { open: "11:00", close: "23:00" },
+      thursday: { open: "11:00", close: "23:00" },
+      friday: { open: "11:00", close: "00:00" },
+      saturday: { open: "10:00", close: "00:00" },
+      sunday: { open: "10:00", close: "23:00" },
+    },
+    OUTDOOR: {
+      monday: { open: "06:00", close: "20:00" },
+      tuesday: { open: "06:00", close: "20:00" },
+      wednesday: { open: "06:00", close: "20:00" },
+      thursday: { open: "06:00", close: "20:00" },
+      friday: { open: "06:00", close: "20:00" },
+      saturday: { open: "06:00", close: "20:00" },
+      sunday: { open: "06:00", close: "20:00" },
+    },
+    SPORTS: {
+      monday: { open: "05:00", close: "23:00" },
+      tuesday: { open: "05:00", close: "23:00" },
+      wednesday: { open: "05:00", close: "23:00" },
+      thursday: { open: "05:00", close: "23:00" },
+      friday: { open: "05:00", close: "23:00" },
+      saturday: { open: "06:00", close: "22:00" },
+      sunday: { open: "06:00", close: "22:00" },
+    },
+    GAMES: {
+      monday: { open: "12:00", close: "23:00" },
+      tuesday: { open: "12:00", close: "23:00" },
+      wednesday: { open: "12:00", close: "23:00" },
+      thursday: { open: "12:00", close: "23:00" },
+      friday: { open: "12:00", close: "00:00" },
+      saturday: { open: "10:00", close: "00:00" },
+      sunday: { open: "10:00", close: "22:00" },
+    },
   };
 
   return defaults[placeType] || defaults.RESTAURANT;
@@ -195,67 +340,110 @@ function getDefaultHours(placeType: string): WeeklyHours {
 // ============================================
 
 async function fetchNearbyPlaces(lat: number, lng: number, radius: number, type: string): Promise<GooglePlace[]> {
-  const params = new URLSearchParams({
-    location: `${lat},${lng}`,
-    radius: radius.toString(),
-    type,
-    key: GOOGLE_PLACES_API_KEY,
+  const response = await fetch(NEARBY_SEARCH_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+      "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.priceLevel,places.types"
+    },
+    body: JSON.stringify({
+      includedTypes: [type],
+      locationRestriction: {
+        circle: {
+          center: { latitude: lat, longitude: lng },
+          radius: radius
+        }
+      },
+      maxResultCount: 20
+    })
   });
 
-  const response = await fetch(`${NEARBY_SEARCH_URL}?${params}`);
-  if (!response.ok) throw new Error(`Nearby Search API error: ${response.status}`);
-
-  const data = await response.json();
-  if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-    throw new Error(`Nearby Search API status: ${data.status}`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Nearby Search API error: ${response.status} - ${errorText}`);
   }
 
-  return data.results || [];
+  const data = await response.json();
+  return (data.places || []).map(mapNewApiPlace);
+}
+
+// Map new API response to our existing interface
+function mapNewApiPlace(place: any): GooglePlace {
+  return {
+    place_id: place.id,
+    name: place.displayName?.text || "",
+    geometry: {
+      location: {
+        lat: place.location?.latitude || 0,
+        lng: place.location?.longitude || 0
+      }
+    },
+    rating: place.rating,
+    user_ratings_total: place.userRatingCount,
+    price_level: mapPriceLevel(place.priceLevel),
+    types: place.types || []
+  };
+}
+
+function mapPriceLevel(priceLevel?: string): number | undefined {
+  const mapping: Record<string, number> = {
+    "PRICE_LEVEL_FREE": 0,
+    "PRICE_LEVEL_INEXPENSIVE": 1,
+    "PRICE_LEVEL_MODERATE": 2,
+    "PRICE_LEVEL_EXPENSIVE": 3,
+    "PRICE_LEVEL_VERY_EXPENSIVE": 4
+  };
+  return priceLevel ? mapping[priceLevel] : undefined;
 }
 
 async function fetchPlaceHours(placeId: string): Promise<WeeklyHours | null> {
-  const params = new URLSearchParams({
-    place_id: placeId,
-    fields: "opening_hours",
-    key: GOOGLE_PLACES_API_KEY,
-  });
-
   try {
-    const response = await fetch(`${PLACE_DETAILS_URL}?${params}`);
+    const response = await fetch(`${PLACE_DETAILS_URL}/${placeId}`, {
+      headers: {
+        "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+        "X-Goog-FieldMask": "regularOpeningHours"
+      }
+    });
+
     if (!response.ok) return null;
 
     const data = await response.json();
-    if (data.status !== "OK" || !data.result?.opening_hours?.periods) return null;
+    if (!data.regularOpeningHours?.periods) return null;
 
-    const periods: OpeningPeriod[] = data.result.opening_hours.periods;
-    
-    // Check for 24/7
-    if (periods.length === 1 && !periods[0].close && periods[0].open.day === 0 && periods[0].open.time === "0000") {
-      const allDay: DayHours = { open: "00:00", close: "23:59" };
-      return {
-        sunday: allDay, monday: allDay, tuesday: allDay, wednesday: allDay,
-        thursday: allDay, friday: allDay, saturday: allDay,
-      };
-    }
-
-    // Parse each period
-    const hours: WeeklyHours = {
-      monday: null, tuesday: null, wednesday: null, thursday: null,
-      friday: null, saturday: null, sunday: null,
-    };
-
-    for (const period of periods) {
-      const dayName = DAY_NAMES[period.open.day];
-      hours[dayName as keyof WeeklyHours] = {
-        open: formatTime(period.open.time),
-        close: period.close ? formatTime(period.close.time) : "23:59",
-      };
-    }
-
-    return hours;
+    return parseOpeningHours(data.regularOpeningHours.periods);
   } catch {
     return null;
   }
+}
+
+// Parse opening hours from new API format
+function parseOpeningHours(periods: any[]): WeeklyHours {
+  const hours: WeeklyHours = {
+    monday: null, tuesday: null, wednesday: null, thursday: null,
+    friday: null, saturday: null, sunday: null
+  };
+
+  // Check for 24/7 (single period with open at day 0, hour 0, no close)
+  if (periods.length === 1 && !periods[0].close && periods[0].open.day === 0 && periods[0].open.hour === 0) {
+    const allDay: DayHours = { open: "00:00", close: "23:59" };
+    return {
+      sunday: allDay, monday: allDay, tuesday: allDay, wednesday: allDay,
+      thursday: allDay, friday: allDay, saturday: allDay
+    };
+  }
+
+  for (const period of periods) {
+    const dayName = DAY_NAMES[period.open.day];
+    hours[dayName as keyof WeeklyHours] = {
+      open: `${String(period.open.hour).padStart(2, '0')}:${String(period.open.minute || 0).padStart(2, '0')}`,
+      close: period.close
+        ? `${String(period.close.hour).padStart(2, '0')}:${String(period.close.minute || 0).padStart(2, '0')}`
+        : "23:59"
+    };
+  }
+
+  return hours;
 }
 
 // ============================================
@@ -324,23 +512,37 @@ serve(async (req) => {
 
       // Fetch places for each type
       for (const placeType of typesToFetch) {
-        const googlePlaces = await fetchNearbyPlaces(
-          neighborhood.center_lat,
-          neighborhood.center_lng,
-          neighborhood.radius_meters || 800,
-          placeType
-        );
+        let googlePlaces: GooglePlace[];
+        try {
+          googlePlaces = await fetchNearbyPlaces(
+            neighborhood.center_lat,
+            neighborhood.center_lng,
+            neighborhood.radius_meters || 800,
+            placeType
+          );
+        } catch (e) {
+          console.warn(`⚠ Skipping type ${placeType}: ${e instanceof Error ? e.message : e}`);
+          continue;
+        }
 
         for (const gp of googlePlaces) {
           if (isFastFood(gp.name)) continue;
           if (seenIds.has(gp.place_id)) continue;
           seenIds.add(gp.place_id);
 
+          // Determine place type - special handling for spa
+          let appType: string;
+          if ((gp.types || []).includes("spa")) {
+            const wellnessType = getWellnessSubType(gp.name);
+            if (!wellnessType) continue;  // Skip invalid wellness places
+            appType = wellnessType;
+          } else {
+            appType = determinePlaceType(gp.types || []);
+          }
+
           // Fetch hours (rate limited)
           await new Promise(r => setTimeout(r, 50));
           const hours = await fetchPlaceHours(gp.place_id);
-          
-          const appType = determinePlaceType(gp.types || []);
           
           places.push({
             id: gp.place_id,
